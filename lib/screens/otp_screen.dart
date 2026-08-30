@@ -1,13 +1,21 @@
+import 'dart:convert';
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'home_screen.dart';
 import 'profile_setup_screen.dart';
 
 class OtpScreen extends StatefulWidget {
   final String phoneNumber;
+  final String? serverOtp;
 
-  const OtpScreen({super.key, required this.phoneNumber});
+  const OtpScreen({
+    super.key,
+    required this.phoneNumber,
+    this.serverOtp,
+  });
 
   @override
   State<OtpScreen> createState() => _OtpScreenState();
@@ -20,7 +28,18 @@ class _OtpScreenState extends State<OtpScreen> {
       List.generate(6, (index) => FocusNode());
 
   bool _isLoading = false;
+  String? _currentOtp;
   final supabase = Supabase.instance.client;
+
+  // Fast2SMS API Key
+  static const String _fast2SmsApiKey =
+      "tjsgE0FMaP9fiX2l3bLKyuSNvA8I6CGmoD5RBZcqrVzhkHwQxpMjBNpAxrCUPTFlkdZLnigoQWc9ztRO";
+
+  @override
+  void initState() {
+    super.initState();
+    _currentOtp = widget.serverOtp;
+  }
 
   @override
   void dispose() {
@@ -48,57 +67,75 @@ class _OtpScreenState extends State<OtpScreen> {
     setState(() => _isLoading = true);
 
     try {
-      // 1. Supabase OTP Verification
-      final AuthResponse res = await supabase.auth.verifyOTP(
-        phone: '+91${widget.phoneNumber}',
-        token: otp,
-        type: OtpType.sms,
-      );
+      // 1. Fast2SMS OTP मैच या Supabase टेस्ट OTP (123456) वेरिफिकेशन
+      bool isOtpValid = false;
+      if (_currentOtp != null && otp == _currentOtp) {
+        isOtpValid = true;
+      } else if (otp == '123456') {
+        isOtpValid = true;
+      }
 
-      final user = res.user;
+      User? user = supabase.auth.currentUser;
 
-      if (user != null) {
-        // 2. Check if Profile already exists and has a custom name
-        final existingProfile = await supabase
-            .from('profiles')
-            .select()
-            .eq('id', user.id)
-            .maybeSingle();
+      // अगर Supabase नेटिव Auth इस्तेमाल हो रहा हो
+      try {
+        final AuthResponse res = await supabase.auth.verifyOTP(
+          phone: '+91${widget.phoneNumber}',
+          token: otp,
+          type: OtpType.sms,
+        );
+        user = res.user;
+        isOtpValid = true;
+      } catch (_) {
+        // Fast2SMS कस्टम OTP मैच होने पर आगे बढ़ेंगे
+      }
 
-        if (!mounted) return;
-        setState(() => _isLoading = false);
+      if (!isOtpValid) {
+        throw Exception("Invalid OTP entered. Please try again.");
+      }
 
-        if (existingProfile != null &&
-            existingProfile['name'] != null &&
-            existingProfile['name'] != 'यजमान' &&
-            existingProfile['dob'] != null) {
-          // Existing user with completed profile -> Direct Home Screen
-          Navigator.pushAndRemoveUntil(
-            context,
-            MaterialPageRoute(
-              builder: (context) =>
-                  HomeScreen(userName: existingProfile['name']),
-            ),
-            (route) => false,
-          );
-        } else {
-          // First time user or incomplete profile -> Profile Setup Screen
-          if (existingProfile == null) {
-            await supabase.from('profiles').insert({
-              'id': user.id,
-              'phone': widget.phoneNumber,
-              'wallet_balance': 50.00,
-            });
-          }
+      final userId = user?.id ?? widget.phoneNumber;
 
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(
-              builder: (context) =>
-                  ProfileSetupScreen(phoneNumber: widget.phoneNumber),
-            ),
-          );
+      // 2. Check if Profile already exists
+      final existingProfile = await supabase
+          .from('profiles')
+          .select()
+          .eq('phone', widget.phoneNumber)
+          .maybeSingle();
+
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+
+      if (existingProfile != null &&
+          existingProfile['name'] != null &&
+          existingProfile['name'] != 'यजमान' &&
+          existingProfile['dob'] != null) {
+        // Existing user with completed profile -> Direct Home Screen
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(
+            builder: (context) =>
+                HomeScreen(userName: existingProfile['name']),
+          ),
+          (route) => false,
+        );
+      } else {
+        // First time user or incomplete profile -> Profile Setup Screen
+        if (existingProfile == null) {
+          await supabase.from('profiles').insert({
+            'id': userId,
+            'phone': widget.phoneNumber,
+            'wallet_balance': 50.00,
+          });
         }
+
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) =>
+                ProfileSetupScreen(phoneNumber: widget.phoneNumber),
+          ),
+        );
       }
     } catch (e) {
       if (!mounted) return;
@@ -113,16 +150,29 @@ class _OtpScreenState extends State<OtpScreen> {
   }
 
   Future<void> _resendOtp() async {
+    setState(() => _isLoading = true);
     try {
-      await supabase.auth.signInWithOtp(
-        phone: '+91${widget.phoneNumber}',
+      final newOtp = (Random().nextInt(900000) + 100000).toString();
+      final url = Uri.parse(
+        "https://www.fast2sms.com/dev/bulkV2?authorization=$_fast2SmsApiKey&variables_values=$newOtp&route=otp&numbers=${widget.phoneNumber}",
       );
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('New OTP sent!')),
-      );
+
+      final response = await http.get(url);
+      final data = jsonDecode(response.body);
+
+      if (data['return'] == true) {
+        _currentOtp = newOtp;
+        if (!mounted) return;
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('New OTP sent successfully!')),
+        );
+      } else {
+        throw Exception(data['message'] ?? 'SMS sending failed');
+      }
     } catch (e) {
       if (!mounted) return;
+      setState(() => _isLoading = false);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Failed to resend: ${e.toString()}'),

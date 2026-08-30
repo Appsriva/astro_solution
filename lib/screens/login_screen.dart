@@ -1,5 +1,10 @@
+import 'dart:convert';
+import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'home_screen.dart';
 import 'otp_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -16,20 +21,194 @@ class _LoginScreenState extends State<LoginScreen> {
 
   final supabase = Supabase.instance.client;
 
+  // Fast2SMS API Key
+  static const String _fast2SmsApiKey =
+      "tjsgE0FMaP9fiX2l3bLKyuSNvA8I6CGmoD5RBZcqrVzhkHwQxpMjBNpAxrCUPTFlkdZLnigoQWc9ztRO";
+
   @override
   void dispose() {
     _phoneController.dispose();
     super.dispose();
   }
 
-  Future<void> _sendOtp() async {
+  // Fast2SMS API से OTP भेजने का फंक्शन
+  Future<String?> _sendFast2Sms(String phone) async {
+    final generatedOtp = (Random().nextInt(900000) + 100000).toString();
+    final url = Uri.parse(
+      "https://www.fast2sms.com/dev/bulkV2?authorization=$_fast2SmsApiKey&variables_values=$generatedOtp&route=otp&numbers=$phone",
+    );
+
+    try {
+      final response = await http.get(url);
+      final data = jsonDecode(response.body);
+      if (data['return'] == true) {
+        return generatedOtp;
+      } else {
+        debugPrint("Fast2SMS Error: ${data['message']}");
+        return null;
+      }
+    } catch (e) {
+      debugPrint("Network Error: $e");
+      return null;
+    }
+  }
+
+  // पुराने यूज़र के लिए MPIN डायलॉग
+  void _showPinDialog(String phone, String correctPin, String userName) {
+    final TextEditingController pinInputController = TextEditingController();
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) {
+        return Padding(
+          padding: EdgeInsets.only(
+            left: 24,
+            right: 24,
+            top: 24,
+            bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade300,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 20),
+              Text(
+                'Welcome Back, $userName!',
+                style: const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF212121),
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'Enter your 4-digit security PIN for +91 $phone',
+                style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
+              ),
+              const SizedBox(height: 20),
+              TextFormField(
+                controller: pinInputController,
+                keyboardType: TextInputType.number,
+                maxLength: 4,
+                obscureText: true,
+                autofocus: true,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                style: const TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 10,
+                ),
+                textAlign: TextAlign.center,
+                decoration: InputDecoration(
+                  counterText: '',
+                  hintText: '••••',
+                  hintStyle: const TextStyle(letterSpacing: 10, color: Colors.grey),
+                  filled: true,
+                  fillColor: Colors.grey.shade50,
+                  contentPadding: const EdgeInsets.symmetric(vertical: 14),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide: BorderSide(color: Colors.grey.shade300),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide: const BorderSide(color: Color(0xFFFF8F00), width: 2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 20),
+              SizedBox(
+                width: double.infinity,
+                height: 50,
+                child: ElevatedButton(
+                  onPressed: () {
+                    if (pinInputController.text.trim() == correctPin) {
+                      Navigator.pop(context); // क्लोज डायलॉग
+                      Navigator.pushAndRemoveUntil(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => HomeScreen(userName: userName),
+                        ),
+                        (route) => false,
+                      );
+                    } else {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Incorrect PIN! Please try again.'),
+                          backgroundColor: Colors.redAccent,
+                        ),
+                      );
+                    }
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFFF8F00),
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                  child: const Text(
+                    'LOGIN',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                      letterSpacing: 1.1,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _handleContinue() async {
     if (!_formKey.currentState!.validate()) return;
 
     final phone = _phoneController.text.trim();
     setState(() => _isLoading = true);
 
     try {
-      // Supabase Phone OTP Trigger (+91 Country Code)
+      // 1. Supabase में चेक करें कि क्या यूज़र का प्रोफाइल और PIN मौजूद है
+      final existingUser = await supabase
+          .from('profiles')
+          .select('name, mpin, dob')
+          .eq('phone', phone)
+          .maybeSingle();
+
+      setState(() => _isLoading = false);
+
+      // 2. अगर पुराना यूज़र है और उसका PIN सेट है -> डायलॉग खोलें
+      if (existingUser != null &&
+          existingUser['mpin'] != null &&
+          existingUser['mpin'].toString().isNotEmpty) {
+        final userName = existingUser['name'] ?? 'User';
+        _showPinDialog(phone, existingUser['mpin'].toString(), userName);
+        return;
+      }
+
+      // 3. नया यूज़र है -> OTP भेजें और OTP Screen पर ले जाएँ
+      setState(() => _isLoading = true);
+      final sentOtp = await _sendFast2Sms(phone);
+
       await supabase.auth.signInWithOtp(
         phone: '+91$phone',
       );
@@ -40,7 +219,10 @@ class _LoginScreenState extends State<LoginScreen> {
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (context) => OtpScreen(phoneNumber: phone),
+          builder: (context) => OtpScreen(
+            phoneNumber: phone,
+            serverOtp: sentOtp,
+          ),
         ),
       );
     } catch (e) {
@@ -95,7 +277,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'We will send you a 6-digit OTP code to verify your account.',
+                  'We will verify your number or login instantly with PIN.',
                   style: TextStyle(
                     fontSize: 14,
                     color: Colors.grey.shade600,
@@ -170,7 +352,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   width: double.infinity,
                   height: 52,
                   child: ElevatedButton(
-                    onPressed: _isLoading ? null : _sendOtp,
+                    onPressed: _isLoading ? null : _handleContinue,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFFFF8F00),
                       elevation: 0,
@@ -188,7 +370,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                           )
                         : const Text(
-                            'GET OTP',
+                            'CONTINUE',
                             style: TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.bold,

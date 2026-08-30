@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'home_screen.dart';
 
@@ -17,6 +18,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _cityController = TextEditingController();
   final TextEditingController _birthPlaceController = TextEditingController();
+  final TextEditingController _pinController = TextEditingController();
 
   DateTime? _selectedDate;
   TimeOfDay? _selectedTime;
@@ -30,6 +32,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
     _nameController.dispose();
     _cityController.dispose();
     _birthPlaceController.dispose();
+    _pinController.dispose();
     super.dispose();
   }
 
@@ -101,19 +104,20 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
         final formattedDob =
             "${_selectedDate!.day}/${_selectedDate!.month}/${_selectedDate!.year}";
         final formattedTob = _selectedTime!.format(context);
+        final userId = user?.id ?? widget.phoneNumber;
 
-        // Supabase Profiles Table Update
-        if (user != null) {
-          await supabase.from('profiles').upsert({
-            'id': user.id,
-            'phone': widget.phoneNumber,
-            'name': _nameController.text.trim(),
-            'gender': _selectedGender,
-            'dob': formattedDob,
-            'tob': formattedTob,
-            'pob': _birthPlaceController.text.trim(),
-          });
-        }
+        // Supabase Profiles Table Upsert with MPIN
+        await supabase.from('profiles').upsert({
+          'id': userId,
+          'phone': widget.phoneNumber,
+          'name': _nameController.text.trim(),
+          'gender': _selectedGender,
+          'dob': formattedDob,
+          'tob': formattedTob,
+          'pob': _birthPlaceController.text.trim(),
+          'current_city': _cityController.text.trim(),
+          'mpin': _pinController.text.trim(),
+        });
 
         if (!mounted) return;
         setState(() => _isLoading = false);
@@ -244,6 +248,63 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                       : null,
                 ),
                 const SizedBox(height: 18),
+                _buildFieldLabel('Set 4-Digit Login PIN (MPIN) *'),
+                TextFormField(
+                  controller: _pinController,
+                  keyboardType: TextInputType.number,
+                  maxLength: 4,
+                  obscureText: true,
+                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 4,
+                  ),
+                  decoration: InputDecoration(
+                    hintText: 'Set 4-digit PIN for quick login',
+                    hintStyle: const TextStyle(
+                      color: Colors.grey,
+                      fontSize: 14,
+                      fontWeight: FontWeight.normal,
+                      letterSpacing: 0,
+                    ),
+                    prefixIcon: const Icon(Icons.lock_outline_rounded,
+                        color: Color(0xFFFF8F00), size: 20),
+                    counterText: '',
+                    filled: true,
+                    fillColor: Colors.white,
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 14),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      borderSide: BorderSide(color: Colors.grey.shade300),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      borderSide: const BorderSide(
+                          color: Color(0xFFFF8F00), width: 2),
+                    ),
+                    errorBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      borderSide: const BorderSide(color: Colors.redAccent),
+                    ),
+                    focusedErrorBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      borderSide: const BorderSide(
+                          color: Colors.redAccent, width: 2),
+                    ),
+                  ),
+                  validator: (val) {
+                    if (val == null || val.trim().isEmpty) {
+                      return 'Please set a 4-digit PIN';
+                    }
+                    if (val.trim().length != 4) {
+                      return 'PIN must be exactly 4 digits';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 18),
                 _buildFieldLabel('Gender *'),
                 Row(
                   children: ['Male', 'Female', 'Other'].map((gender) {
@@ -314,11 +375,11 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                                       style: TextStyle(
                                         fontSize: 14,
                                         fontWeight: _selectedDate == null
-                                            ? FontWeight.normal
-                                            : FontWeight.w600,
+                                          ? FontWeight.normal
+                                          : FontWeight.w600,
                                         color: _selectedDate == null
-                                            ? Colors.grey
-                                            : Colors.black87,
+                                          ? Colors.grey
+                                          : Colors.black87,
                                       ),
                                       overflow: TextOverflow.ellipsis,
                                     ),
@@ -361,11 +422,11 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                                       style: TextStyle(
                                         fontSize: 14,
                                         fontWeight: _selectedTime == null
-                                            ? FontWeight.normal
-                                            : FontWeight.w600,
+                                          ? FontWeight.normal
+                                          : FontWeight.w600,
                                         color: _selectedTime == null
-                                            ? Colors.grey
-                                            : Colors.black87,
+                                          ? Colors.grey
+                                          : Colors.black87,
                                       ),
                                       overflow: TextOverflow.ellipsis,
                                     ),

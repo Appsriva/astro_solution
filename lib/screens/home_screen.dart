@@ -49,6 +49,8 @@ class BannerItem {
   final String btnText;
   final String imageUrl;
   final List<Color> gradient;
+  final String bannerType;
+  final String redirectTo;
 
   const BannerItem({
     required this.badge,
@@ -57,6 +59,8 @@ class BannerItem {
     required this.btnText,
     required this.imageUrl,
     required this.gradient,
+    this.bannerType = 'full_image',
+    this.redirectTo = 'chat',
   });
 }
 
@@ -361,14 +365,8 @@ class _HomeScreenState extends State<HomeScreen> {
       btnText: "Explore Now",
       imageUrl: "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=300&auto=format&fit=crop&q=80",
       gradient: [Color(0xFFFF6F00), Color(0xFFFF3D00)],
-    ),
-    BannerItem(
-      badge: "SACRED RITUALS 🪔",
-      title: "Book Verified Pandits",
-      subtitle: "Perform authentic Vedic pujas at your home or temples.",
-      btnText: "Book Puja",
-      imageUrl: "https://images.unsplash.com/photo-1544717305-2782549b5136?w=300&auto=format&fit=crop&q=80",
-      gradient: [Color(0xFFE65100), Color(0xFFC2185B)],
+      bannerType: "card_style",
+      redirectTo: "chat",
     ),
   ];
 
@@ -380,14 +378,8 @@ class _HomeScreenState extends State<HomeScreen> {
       btnText: "अभी संपर्क करें",
       imageUrl: "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=300&auto=format&fit=crop&q=80",
       gradient: [Color(0xFFFF6F00), Color(0xFFFF3D00)],
-    ),
-    BannerItem(
-      badge: "सनातन अनुष्ठान 🪔",
-      title: "सत्यापित पंडित जी बुक करें",
-      subtitle: "अपने घर या प्रमुख तीर्थस्थलों पर करवाएं संपूर्ण वैदिक पूजा।",
-      btnText: "पंडित बुक करें",
-      imageUrl: "https://images.unsplash.com/photo-1544717305-2782549b5136?w=300&auto=format&fit=crop&q=80",
-      gradient: [Color(0xFFE65100), Color(0xFFC2185B)],
+      bannerType: "card_style",
+      redirectTo: "chat",
     ),
   ];
 
@@ -456,6 +448,38 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _openConsultationHistory() {
     Navigator.push(context, MaterialPageRoute(builder: (context) => const ConsultationHistoryScreen()));
+  }
+
+  // Handle banner clicks with custom redirect target
+  void _handleBannerRedirection(String? target) {
+    switch (target) {
+      case 'call':
+        setState(() => _currentIndex = 1);
+        break;
+      case 'chat':
+        setState(() => _currentIndex = 2);
+        break;
+      case 'live':
+        setState(() => _currentIndex = 3);
+        break;
+      case 'shop':
+        setState(() => _currentIndex = 4);
+        break;
+      case 'remedies':
+        setState(() => _currentIndex = 5);
+        break;
+      case 'kundli':
+        _openKundliScreen();
+        break;
+      case 'panchang':
+        _openPanchangScreen();
+        break;
+      case 'pooja':
+        _openPujaBookingScreen();
+        break;
+      default:
+        setState(() => _currentIndex = 2);
+    }
   }
 
   void _openBlogReader(AstrologyBlog blog) {
@@ -1552,7 +1576,39 @@ ${blog.titleHi}
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _HomeBannerSlider(fallbackBanners: bannerList, onBannerTap: () => setState(() => _currentIndex = 2)),
+          _HomeBannerSlider(
+            fallbackBanners: bannerList,
+            onBannerTapWithRedirect: (target) {
+              switch (target) {
+                case 'call':
+                  setState(() => _currentIndex = 1);
+                  break;
+                case 'chat':
+                  setState(() => _currentIndex = 2);
+                  break;
+                case 'live':
+                  setState(() => _currentIndex = 3);
+                  break;
+                case 'shop':
+                  setState(() => _currentIndex = 4);
+                  break;
+                case 'remedies':
+                  setState(() => _currentIndex = 5);
+                  break;
+                case 'kundli':
+                  _openKundliScreen();
+                  break;
+                case 'panchang':
+                  _openPanchangScreen();
+                  break;
+                case 'pooja':
+                  _openPujaBookingScreen();
+                  break;
+                default:
+                  setState(() => _currentIndex = 2);
+              }
+            },
+          ),
           const SizedBox(height: 14),
 
           const _ShubhMuhuratTickerBanner(),
@@ -1743,7 +1799,7 @@ ${blog.titleHi}
 
           const SizedBox(height: 14),
 
-          // 🌟 MY RECENT SESSIONS SECTION (Package-based, Clickable Profile, No /min)
+          // 🌟 MY RECENT SESSIONS SECTION
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -1777,7 +1833,6 @@ ${blog.titleHi}
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      // Photo Click -> Astrologer Profile Bio Data
                       GestureDetector(
                         onTap: () {
                           Navigator.push(
@@ -1819,7 +1874,6 @@ ${blog.titleHi}
                           crossAxisAlignment: CrossAxisAlignment.start,
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            // Name Click -> Astrologer Profile Bio Data
                             GestureDetector(
                               onTap: () {
                                 Navigator.push(
@@ -2305,9 +2359,12 @@ class _ShubhMuhuratTickerBannerState extends State<_ShubhMuhuratTickerBanner> {
 
 class _HomeBannerSlider extends StatefulWidget {
   final List<BannerItem> fallbackBanners;
-  final VoidCallback onBannerTap;
+  final Function(String? target) onBannerTapWithRedirect;
 
-  const _HomeBannerSlider({required this.fallbackBanners, required this.onBannerTap});
+  const _HomeBannerSlider({
+    required this.fallbackBanners,
+    required this.onBannerTapWithRedirect,
+  });
 
   @override
   State<_HomeBannerSlider> createState() => _HomeBannerSliderState();
@@ -2317,56 +2374,54 @@ class _HomeBannerSliderState extends State<_HomeBannerSlider> {
   late PageController _controller;
   Timer? _timer;
   int _currentIndex = 0;
-  List<BannerItem> _dbBanners = [];
-  bool _isLoading = true;
+  List<Map<String, dynamic>> _dbBanners = [];
 
   @override
   void initState() {
     super.initState();
-    _controller = PageController();
-    _fetchBannersFromSupabase();
+    _controller = PageController(initialPage: 0);
+    _fetchBannersOnce();
   }
 
-  Future<void> _fetchBannersFromSupabase() async {
+  Future<void> _fetchBannersOnce() async {
+    final supabase = Supabase.instance.client;
     try {
-      final response = await Supabase.instance.client
+      final response = await supabase
           .from('banners')
           .select()
-          .eq('is_active', true);
+          .eq('is_active', true)
+          .order('created_at', ascending: false);
 
       if (response.isNotEmpty && mounted) {
         setState(() {
-          _dbBanners = response.map((item) {
-            return BannerItem(
-              badge: item['badge'] ?? "दिव्य मार्गदर्शन 🚩",
-              title: item['title'] ?? "शीर्ष वैदिक ज्योतिषियों से जुड़ें",
-              subtitle: item['subtitle'] ?? "करियर, विवाह और जीवन से जुड़े सभी प्रश्नों के सटीक समाधान।",
-              btnText: item['btn_text'] ?? "अभी संपर्क करें",
-              imageUrl: item['image_url'] ?? "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=300&auto=format&fit=crop&q=80",
-              gradient: const [Color(0xFFFF6F00), Color(0xFFFF3D00)],
-            );
-          }).toList();
-          _isLoading = false;
+          _dbBanners = List<Map<String, dynamic>>.from(response);
         });
-      } else {
-        setState(() => _isLoading = false);
       }
-    } catch (_) {
-      setState(() => _isLoading = false);
-    }
+    } catch (_) {}
 
     _timer = Timer.periodic(const Duration(seconds: 4), (timer) {
-      final activeList = _dbBanners.isNotEmpty ? _dbBanners : widget.fallbackBanners;
-      if (_controller.hasClients && activeList.isNotEmpty) {
-        _currentIndex = (_currentIndex + 1) % activeList.length;
+      final activeBanners = _dbBanners.isNotEmpty ? _dbBanners : widget.fallbackBanners;
+      if (activeBanners.isNotEmpty && _controller.hasClients) {
+        _currentIndex = (_currentIndex + 1) % activeBanners.length;
         _controller.animateToPage(
           _currentIndex,
           duration: const Duration(milliseconds: 500),
           curve: Curves.easeInOut,
         );
-        if (mounted) setState(() {});
       }
     });
+  }
+
+  Color _hexToColor(String? hexString, Color fallback) {
+    if (hexString == null || hexString.isEmpty) return fallback;
+    try {
+      final buffer = StringBuffer();
+      if (hexString.length == 6 || hexString.length == 7) buffer.write('ff');
+      buffer.write(hexString.replaceFirst('#', ''));
+      return Color(int.parse(buffer.toString(), radix: 16));
+    } catch (_) {
+      return fallback;
+    }
   }
 
   @override
@@ -2385,135 +2440,202 @@ class _HomeBannerSliderState extends State<_HomeBannerSlider> {
       child: PageView.builder(
         controller: _controller,
         physics: const ClampingScrollPhysics(),
-        onPageChanged: (index) => setState(() => _currentIndex = index),
+        onPageChanged: (index) {
+          setState(() {
+            _currentIndex = index;
+          });
+        },
         itemCount: activeBanners.length,
         itemBuilder: (context, index) {
-          final banner = activeBanners[index];
-          return Container(
-            margin: const EdgeInsets.symmetric(horizontal: 2),
-            padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: banner.gradient,
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
+          String imageUrl = '';
+          String title = '';
+          String subtitle = '';
+          String badge = 'DIVINE GUIDANCE 🚩';
+          String btnText = 'Explore Now';
+          String bannerType = 'full_image';
+          String redirectTo = 'chat';
+          Color gradStart = kPrimaryBhagwa;
+          Color gradEnd = kDeepSaffron;
+
+          if (_dbBanners.isNotEmpty) {
+            final item = _dbBanners[index];
+            imageUrl = item['image_url'] ?? '';
+            title = item['title'] ?? '';
+            subtitle = item['subtitle'] ?? '';
+            badge = item['badge'] ?? 'DIVINE GUIDANCE 🚩';
+            btnText = item['btn_text'] ?? 'Explore Now';
+            bannerType = item['banner_type'] ?? 'full_image';
+            redirectTo = item['redirect_to'] ?? 'chat';
+            gradStart = _hexToColor(item['gradient_start'], kPrimaryBhagwa);
+            gradEnd = _hexToColor(item['gradient_end'], kDeepSaffron);
+          } else {
+            final item = widget.fallbackBanners[index] as BannerItem;
+            imageUrl = item.imageUrl;
+            title = item.title;
+            subtitle = item.subtitle;
+            badge = item.badge;
+            btnText = item.btnText;
+            bannerType = item.bannerType;
+            redirectTo = item.redirectTo;
+            gradStart = item.gradient.first;
+            gradEnd = item.gradient.last;
+          }
+
+          final bool isFullImage = bannerType == 'full_image';
+
+          return GestureDetector(
+            onTap: () => widget.onBannerTapWithRedirect(redirectTo),
+            child: Container(
+              margin: const EdgeInsets.symmetric(horizontal: 2),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Color(0x14000000),
+                    blurRadius: 10,
+                    offset: Offset(0, 4),
+                  ),
+                ],
               ),
-              borderRadius: BorderRadius.circular(20),
-              boxShadow: [
-                BoxShadow(
-                  color: banner.gradient.first.withAlpha(90),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  flex: 6,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(20),
+                child: isFullImage
+                    // 🌟 1. FULL GRAPHIC IMAGE BANNER (पूरा इमेज पोस्टर)
+                    ? Image.network(
+                        imageUrl,
+                        width: double.infinity,
+                        height: 165,
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) => Container(
+                          color: kPrimaryBhagwa,
+                          child: const Center(
+                            child: Icon(Icons.broken_image_rounded, color: Colors.white, size: 40),
+                          ),
+                        ),
+                      )
+                    // 🌟 2. CARD STYLE
+                    : Container(
+                        padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
                         decoration: BoxDecoration(
-                          color: Colors.black26,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Text(
-                          banner.badge,
-                          style: const TextStyle(color: kGoldAccent, fontSize: 9, fontWeight: FontWeight.bold),
-                        ),
-                      ),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            banner.title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                          gradient: LinearGradient(
+                            colors: [gradStart, gradEnd],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
                           ),
-                          const SizedBox(height: 2),
-                          Text(
-                            banner.subtitle,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(color: Colors.white70, fontSize: 10, height: 1.2),
-                          ),
-                        ],
-                      ),
-                      ElevatedButton(
-                        onPressed: widget.onBannerTap,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.white,
-                          foregroundColor: kDeepSaffron,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-                          minimumSize: const Size(60, 28),
-                          elevation: 2,
                         ),
-                        child: Text(banner.btnText, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  flex: 4,
-                  child: Center(
-                    child: Stack(
-                      alignment: Alignment.center,
-                      children: [
-                        Container(
-                          width: 105,
-                          height: 105,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            border: Border.all(color: kGoldAccent.withAlpha(200), width: 2),
-                            boxShadow: const [
-                              BoxShadow(
-                                color: Colors.black26,
-                                blurRadius: 8,
-                                offset: Offset(0, 3),
-                              ),
-                            ],
-                          ),
-                          child: ClipOval(
-                            child: Image.network(
-                              banner.imageUrl,
-                              fit: BoxFit.cover,
-                              errorBuilder: (context, error, stackTrace) => Container(
-                                color: Colors.white24,
-                                child: const Icon(Icons.person_rounded, color: Colors.white, size: 40),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              flex: 6,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  if (badge.isNotEmpty)
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: Colors.black26,
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: Text(
+                                        badge,
+                                        style: const TextStyle(color: kGoldAccent, fontSize: 9, fontWeight: FontWeight.bold),
+                                      ),
+                                    ),
+                                  Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        title,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                                      ),
+                                      if (subtitle.isNotEmpty) ...[
+                                        const SizedBox(height: 2),
+                                        Text(
+                                          subtitle,
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(color: Colors.white70, fontSize: 10, height: 1.2),
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                  ElevatedButton(
+                                    onPressed: () => widget.onBannerTapWithRedirect(redirectTo),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.white,
+                                      foregroundColor: gradStart,
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                                      minimumSize: const Size(60, 28),
+                                      elevation: 2,
+                                    ),
+                                    child: Text(btnText, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                                  ),
+                                ],
                               ),
                             ),
-                          ),
-                        ),
-                        Positioned(
-                          bottom: 0,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: Colors.black.withAlpha(190),
-                              borderRadius: BorderRadius.circular(8),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              flex: 4,
+                              child: Center(
+                                child: Stack(
+                                  alignment: Alignment.center,
+                                  children: [
+                                    Container(
+                                      width: 105,
+                                      height: 105,
+                                      decoration: BoxDecoration(
+                                        shape: BoxShape.circle,
+                                        border: Border.all(color: kGoldAccent.withAlpha(200), width: 2),
+                                        boxShadow: const [
+                                          BoxShadow(
+                                            color: Colors.black26,
+                                            blurRadius: 8,
+                                            offset: Offset(0, 3),
+                                          ),
+                                        ],
+                                      ),
+                                      child: ClipOval(
+                                        child: Image.network(
+                                          imageUrl,
+                                          fit: BoxFit.cover,
+                                          errorBuilder: (context, error, stackTrace) => Container(
+                                            color: Colors.white24,
+                                            child: const Icon(Icons.person_rounded, color: Colors.white, size: 40),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    Positioned(
+                                      bottom: 0,
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: Colors.black.withAlpha(190),
+                                          borderRadius: BorderRadius.circular(8),
+                                        ),
+                                        child: const Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Icon(Icons.verified_rounded, color: kGoldAccent, size: 10),
+                                            SizedBox(width: 3),
+                                            Text("VERIFIED", style: TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.bold)),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
                             ),
-                            child: const Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(Icons.verified_rounded, color: kGoldAccent, size: 10),
-                                SizedBox(width: 3),
-                                Text("VERIFIED", style: TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.bold)),
-                              ],
-                            ),
-                          ),
+                          ],
                         ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
+                      ),
+              ),
             ),
           );
         },
