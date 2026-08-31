@@ -67,36 +67,54 @@ class _OtpScreenState extends State<OtpScreen> {
     setState(() => _isLoading = true);
 
     try {
-      // 1. Fast2SMS OTP मैच या Supabase टेस्ट OTP (123456) वेरिफिकेशन
+      // 1. Fast2SMS OTP मैच या यूनिवर्सल टेस्ट OTP (123456) वेरिफिकेशन
       bool isOtpValid = false;
-      if (_currentOtp != null && otp == _currentOtp) {
+      if (_currentOtp != null && otp.trim() == _currentOtp!.trim()) {
         isOtpValid = true;
-      } else if (otp == '123456') {
+      } else if (otp.trim() == '123456') {
         isOtpValid = true;
-      }
-
-      User? user = supabase.auth.currentUser;
-
-      // अगर Supabase नेटिव Auth इस्तेमाल हो रहा हो
-      try {
-        final AuthResponse res = await supabase.auth.verifyOTP(
-          phone: '+91${widget.phoneNumber}',
-          token: otp,
-          type: OtpType.sms,
-        );
-        user = res.user;
-        isOtpValid = true;
-      } catch (_) {
-        // Fast2SMS कस्टम OTP मैच होने पर आगे बढ़ेंगे
       }
 
       if (!isOtpValid) {
-        throw Exception("Invalid OTP entered. Please try again.");
+        throw Exception("गलत OTP दर्ज किया गया है। कृपया पुनः प्रयास करें।");
       }
 
-      final userId = user?.id ?? widget.phoneNumber;
+      // 🚫 2. Check if User is Banned in Supabase before granting access
+      final profileCheck = await supabase
+          .from('profiles')
+          .select('status')
+          .eq('phone', widget.phoneNumber)
+          .maybeSingle();
 
-      // 2. Check if Profile already exists
+      if (profileCheck != null) {
+        final userStatus = profileCheck['status'] ?? 'Active';
+
+        if (userStatus == 'Permanently Banned') {
+          if (!mounted) return;
+          setState(() => _isLoading = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Your account has been permanently banned by Admin! 🚫'),
+              backgroundColor: Colors.red,
+            ),
+          );
+          return; // यहीं रोक दें, ऐप में आगे नहीं जाने दें
+        }
+
+        if (userStatus == 'Temporarily Banned') {
+          if (!mounted) return;
+          setState(() => _isLoading = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Your account is temporarily suspended. Please contact support.'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+          return; // यहीं रोक दें
+        }
+      }
+
+      // 3. Check if Profile already exists in Supabase
       final existingProfile = await supabase
           .from('profiles')
           .select()
@@ -122,11 +140,16 @@ class _OtpScreenState extends State<OtpScreen> {
       } else {
         // First time user or incomplete profile -> Profile Setup Screen
         if (existingProfile == null) {
-          await supabase.from('profiles').insert({
-            'id': userId,
-            'phone': widget.phoneNumber,
-            'wallet_balance': 50.00,
-          });
+          try {
+            await supabase.from('profiles').insert({
+              'phone': widget.phoneNumber,
+              'name': 'यजमान',
+              'wallet_balance': 50.00,
+              'status': 'Active',
+            });
+          } catch (_) {
+            // यदि इंसर्ट में कोई समस्या आए तो भी प्रोफाइल सेटअप पर भेजें
+          }
         }
 
         Navigator.pushReplacement(
@@ -165,7 +188,10 @@ class _OtpScreenState extends State<OtpScreen> {
         if (!mounted) return;
         setState(() => _isLoading = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('New OTP sent successfully!')),
+          const SnackBar(
+            content: Text('New OTP sent successfully! 📩'),
+            backgroundColor: Colors.green,
+          ),
         );
       } else {
         throw Exception(data['message'] ?? 'SMS sending failed');

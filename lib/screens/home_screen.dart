@@ -450,7 +450,6 @@ class _HomeScreenState extends State<HomeScreen> {
     Navigator.push(context, MaterialPageRoute(builder: (context) => const ConsultationHistoryScreen()));
   }
 
-  // Handle banner clicks with custom redirect target
   void _handleBannerRedirection(String? target) {
     switch (target) {
       case 'call':
@@ -2269,23 +2268,108 @@ class _ShubhMuhuratTickerBannerState extends State<_ShubhMuhuratTickerBanner> {
   late PageController _tickerController;
   Timer? _tickerTimer;
   int _tickerIndex = 0;
+  List<Map<String, dynamic>> _liveTickerList = [];
 
-  final List<Map<String, dynamic>> _muhuratList = [
-    {"icon": Icons.stars_rounded, "text": "आज का अभिजित मुहूर्त: दोपहर 11:45 से 12:35 तक (शुभ कार्य हेतु श्रेष्ठ)"},
-    {"icon": Icons.warning_amber_rounded, "text": "आज का राहुकाल: दोपहर 01:30 से 03:00 तक (इस दौरान नया कार्य न करें)"},
-    {"icon": Icons.wb_sunny_rounded, "text": "आज का ब्रह्म मुहूर्त: सुबह 04:20 से 05:10 तक (ध्यान व साधना हेतु उत्तम)"},
-    {"icon": Icons.favorite_rounded, "text": "आज का गोचर: चंद्रमा तुला राशि में विराजमान, मानसिक शांति मिलेगी"},
-    {"icon": Icons.flare_rounded, "text": "आज का अमृत काल: शाम 05:15 से 06:45 तक (व्यापारिक सौदों के लिए शुभ)"},
-    {"icon": Icons.local_fire_department_rounded, "text": "दैनिक उपाय: आज सुबह स्नान के बाद सूर्य देव को जल व लाल फूल अर्पित करें"},
+  final List<Map<String, dynamic>> _fallbackMuhuratList = [
+    {
+      "id": "fallback_1",
+      "icon": Icons.stars_rounded,
+      "title": "आज का अभिजित मुहूर्त",
+      "text": "आज का अभिजित मुहूर्त: दोपहर 11:45 से 12:35 तक (शुभ कार्य हेतु श्रेष्ठ)",
+      "time": "दोपहर 11:45 से 12:35 तक",
+      "desc": "अभिजित मुहूर्त दिन का सबसे शक्तिशाली और सर्वकार्य सिद्धिदायक मुहूर्त माना जाता है। इस समय में किया गया कोई भी नया कार्य निर्विघ्न रूप से सफल होता है।",
+      "views_count": 0,
+      "likes_count": 106,
+    },
+    {
+      "id": "fallback_2",
+      "icon": Icons.warning_amber_rounded,
+      "title": "आज का राहुकाल",
+      "text": "आज का राहुकाल: दोपहर 01:30 से 03:00 तक (इस दौरान नया कार्य न करें)",
+      "time": "दोपहर 01:30 से 03:00 तक",
+      "desc": "राहुकाल के समय किसी भी नए कार्य, यात्रा या वित्तीय लेन-देन से बचना चाहिए। इस दौरान केवल नियमित पूजा व ध्यान करना उचित है।",
+      "views_count": 0,
+      "likes_count": 106,
+    },
+    {
+      "id": "fallback_3",
+      "icon": Icons.wb_sunny_rounded,
+      "title": "आज का ब्रह्म मुहूर्त",
+      "text": "आज का ब्रह्म मुहूर्त: सुबह 04:20 से 05:10 तक (ध्यान व साधना हेतु उत्तम)",
+      "time": "सुबह 04:20 से 05:10 तक",
+      "desc": "ब्रह्म मुहूर्त में ईश्वरीय ऊर्जा का प्रवाह चरम पर होता है। इस समय उठकर योग, ध्यान और मंत्र जप करने से आत्मबल एवं एकाग्रता में वृद्धि होती है।",
+      "views_count": 0,
+      "likes_count": 106,
+    },
+    {
+      "id": "fallback_4",
+      "icon": Icons.favorite_rounded,
+      "title": "आज का गोचर",
+      "text": "आज का गोचर: चंद्रमा तुला राशि में विराजमान, मानसिक शांति मिलेगी",
+      "time": "पूरे दिन प्रभावी",
+      "desc": "चंद्रमा का शुभ गोचर आपके मन और विचारों में सौम्यता व संतुलन लाएगा। कला, रचनात्मक कार्यों और पारिवारिक रिश्तों के लिए यह समय अत्यंत अनुकूल है।",
+      "views_count": 0,
+      "likes_count": 106,
+    },
+    {
+      "id": "fallback_5",
+      "icon": Icons.flare_rounded,
+      "title": "आज का अमृत काल",
+      "text": "आज का अमृत काल: शाम 05:15 से 06:45 तक (व्यापारिक सौदों के लिए शुभ)",
+      "time": "शाम 05:15 से 06:45 तक",
+      "desc": "अमृत काल का समय किसी भी शुभ कार्य, नए व्यापार की शुरुआत, खरीदारी या महत्वपूर्ण अनुबंध/डील साइन करने के लिए अत्यंत फलदायी और मंगलकारी माना जाता है।",
+      "views_count": 0,
+      "likes_count": 106,
+    },
+    {
+      "id": "fallback_6",
+      "icon": Icons.local_fire_department_rounded,
+      "title": "दैनिक उपाय",
+      "text": "दैनिक उपाय: आज सुबह स्नान के बाद सूर्य देव को जल व लाल फूल अर्पित करें",
+      "time": "प्रातः काल",
+      "desc": "सूर्य देव को तांबे के लोटे से अर्घ्य देने और गायत्री मंत्र का 11 बार जाप करने से मान-सम्मान, यश और स्वास्थ्य में अद्भुत लाभ होता है।",
+      "views_count": 0,
+      "likes_count": 106,
+    },
   ];
 
   @override
   void initState() {
     super.initState();
     _tickerController = PageController();
+    _fetchLiveMiddleBanners();
+  }
+
+  Future<void> _fetchLiveMiddleBanners() async {
+    try {
+      final response = await Supabase.instance.client
+          .from('middle_banners')
+          .select()
+          .eq('is_active', true)
+          .order('created_at', ascending: false);
+
+      if (response.isNotEmpty && mounted) {
+        setState(() {
+          _liveTickerList = List<Map<String, dynamic>>.from(response.map((item) {
+            return {
+              "id": item["id"],
+              "icon": Icons.flare_rounded,
+              "title": item["title"] ?? "विशेष सूचना",
+              "text": item["title"] ?? "",
+              "time": "विशेष वैदिक मुहूर्त / सूचना",
+              "desc": item["popup_content"] ?? item["title"] ?? "",
+              "views_count": item["views_count"] ?? 0,
+              "likes_count": item["likes_count"] ?? 106,
+            };
+          }));
+        });
+      }
+    } catch (_) {}
+
     _tickerTimer = Timer.periodic(const Duration(milliseconds: 3500), (timer) {
-      if (_tickerController.hasClients) {
-        _tickerIndex = (_tickerIndex + 1) % _muhuratList.length;
+      final activeList = _liveTickerList.isNotEmpty ? _liveTickerList : _fallbackMuhuratList;
+      if (_tickerController.hasClients && activeList.isNotEmpty) {
+        _tickerIndex = (_tickerIndex + 1) % activeList.length;
         _tickerController.animateToPage(
           _tickerIndex,
           duration: const Duration(milliseconds: 600),
@@ -2294,6 +2378,185 @@ class _ShubhMuhuratTickerBannerState extends State<_ShubhMuhuratTickerBanner> {
         if (mounted) setState(() {});
       }
     });
+  }
+
+  void _showMuhuratDetailDialog(BuildContext context, Map<String, dynamic> item) async {
+    final String? bannerId = item["id"]?.toString();
+    int currentViews = (item["views_count"] ?? 0) as int;
+    int currentLikes = (item["likes_count"] ?? 106) as int;
+    bool isLiked = false;
+
+    // 1. Live Views Count Increment in Supabase
+    if (bannerId != null && !bannerId.startsWith('fallback_')) {
+      try {
+        await Supabase.instance.client
+            .from('middle_banners')
+            .update({'views_count': currentViews + 1})
+            .eq('id', bannerId);
+        item["views_count"] = currentViews + 1;
+      } catch (_) {}
+    }
+
+    if (!context.mounted) return;
+
+    showDialog(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return Dialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+              ),
+              backgroundColor: Colors.white,
+              child: Padding(
+                padding: const EdgeInsets.all(18.0),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Expanded(
+                          child: Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(6),
+                                decoration: const BoxDecoration(
+                                  color: Color(0xFFFFF0E6),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Icon(item["icon"] ?? Icons.flare_rounded, color: kPrimaryBhagwa, size: 22),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  item["title"] ?? "विशेष विवरण",
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                    color: kTextColor,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.close_rounded, size: 20, color: kTextColor),
+                          onPressed: () => Navigator.pop(dialogContext),
+                        ),
+                      ],
+                    ),
+                    const Divider(height: 16),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFFF7F0),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.orange.shade200),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.access_time_filled_rounded, size: 14, color: kPrimaryBhagwa),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              "समय / काल: ${item["time"] ?? 'पूरे दिन प्रभावी'}",
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: kPrimaryBhagwa,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      item["desc"] ?? "",
+                      style: const TextStyle(
+                        fontSize: 13,
+                        color: kTextColor,
+                        height: 1.5,
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        InkWell(
+                          onTap: () async {
+                            setDialogState(() {
+                              isLiked = !isLiked;
+                              currentLikes += isLiked ? 1 : -1;
+                            });
+
+                            // 2. Live Likes Count Update in Supabase
+                            if (bannerId != null && !bannerId.startsWith('fallback_')) {
+                              try {
+                                await Supabase.instance.client
+                                    .from('middle_banners')
+                                    .update({'likes_count': currentLikes})
+                                    .eq('id', bannerId);
+                                item["likes_count"] = currentLikes;
+                              } catch (_) {}
+                            }
+                          },
+                          borderRadius: BorderRadius.circular(10),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: isLiked ? Colors.red.shade50 : Colors.grey.shade100,
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(
+                                color: isLiked ? Colors.red.shade200 : Colors.grey.shade300,
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  isLiked ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+                                  color: isLiked ? Colors.red : Colors.grey.shade600,
+                                  size: 18,
+                                ),
+                                const SizedBox(width: 6),
+                                Text(
+                                  "$currentLikes",
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                    color: isLiked ? Colors.red : Colors.grey.shade700,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: kPrimaryBhagwa,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                            elevation: 2,
+                          ),
+                          onPressed: () => Navigator.pop(dialogContext),
+                          child: const Text("समझ गया", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
+                        ),
+                      ],
+                    )
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
   }
 
   @override
@@ -2305,10 +2568,11 @@ class _ShubhMuhuratTickerBannerState extends State<_ShubhMuhuratTickerBanner> {
 
   @override
   Widget build(BuildContext context) {
+    final activeList = _liveTickerList.isNotEmpty ? _liveTickerList : _fallbackMuhuratList;
+    final currentItem = activeList[_tickerIndex % activeList.length];
+
     return GestureDetector(
-      onTap: () {
-        Navigator.push(context, MaterialPageRoute(builder: (context) => const PanchangScreen()));
-      },
+      onTap: () => _showMuhuratDetailDialog(context, currentItem),
       child: Container(
         height: 50,
         padding: const EdgeInsets.symmetric(horizontal: 14),
@@ -2324,19 +2588,19 @@ class _ShubhMuhuratTickerBannerState extends State<_ShubhMuhuratTickerBanner> {
         ),
         child: Row(
           children: [
-            Icon(_muhuratList[_tickerIndex]["icon"], color: const Color(0xFFE65100), size: 22),
+            Icon(currentItem["icon"] ?? Icons.flare_rounded, color: const Color(0xFFE65100), size: 22),
             const SizedBox(width: 10),
             Expanded(
               child: PageView.builder(
                 controller: _tickerController,
                 physics: const NeverScrollableScrollPhysics(),
-                itemCount: _muhuratList.length,
+                itemCount: activeList.length,
                 itemBuilder: (context, index) {
-                  final item = _muhuratList[index];
+                  final item = activeList[index];
                   return Align(
                     alignment: Alignment.centerLeft,
                     child: Text(
-                      item["text"],
+                      item["text"] ?? "",
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
@@ -2469,7 +2733,7 @@ class _HomeBannerSliderState extends State<_HomeBannerSlider> {
             gradStart = _hexToColor(item['gradient_start'], kPrimaryBhagwa);
             gradEnd = _hexToColor(item['gradient_end'], kDeepSaffron);
           } else {
-            final item = widget.fallbackBanners[index] as BannerItem;
+            final item = widget.fallbackBanners[index];
             imageUrl = item.imageUrl;
             title = item.title;
             subtitle = item.subtitle;
@@ -2500,7 +2764,6 @@ class _HomeBannerSliderState extends State<_HomeBannerSlider> {
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(20),
                 child: isFullImage
-                    // 🌟 1. FULL GRAPHIC IMAGE BANNER (पूरा इमेज पोस्टर)
                     ? Image.network(
                         imageUrl,
                         width: double.infinity,
@@ -2513,7 +2776,6 @@ class _HomeBannerSliderState extends State<_HomeBannerSlider> {
                           ),
                         ),
                       )
-                    // 🌟 2. CARD STYLE
                     : Container(
                         padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
                         decoration: BoxDecoration(

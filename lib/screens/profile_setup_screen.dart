@@ -1,5 +1,7 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'home_screen.dart';
 
@@ -25,6 +27,9 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
   String _selectedGender = 'Male';
   bool _isLoading = false;
 
+  Uint8List? _profileImageBytes;
+  final ImagePicker _picker = ImagePicker();
+
   final supabase = Supabase.instance.client;
 
   @override
@@ -34,6 +39,27 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
     _birthPlaceController.dispose();
     _pinController.dispose();
     super.dispose();
+  }
+
+  // गैलरी से फोटो चुनने का फंक्शन
+  Future<void> _pickImage() async {
+    try {
+      final XFile? image = await _picker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 600,
+        maxHeight: 600,
+        imageQuality: 80,
+      );
+
+      if (image != null) {
+        final bytes = await image.readAsBytes();
+        setState(() {
+          _profileImageBytes = bytes;
+        });
+      }
+    } catch (e) {
+      debugPrint("Image Pick Error: $e");
+    }
   }
 
   Future<void> _pickDate() async {
@@ -100,15 +126,17 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
       setState(() => _isLoading = true);
 
       try {
-        final user = supabase.auth.currentUser;
         final formattedDob =
             "${_selectedDate!.day}/${_selectedDate!.month}/${_selectedDate!.year}";
         final formattedTob = _selectedTime!.format(context);
-        final userId = user?.id ?? widget.phoneNumber;
 
-        // Supabase Profiles Table Upsert with MPIN
-        await supabase.from('profiles').upsert({
-          'id': userId,
+        // इमेज को Base64 स्ट्रिंग में कन्वर्ट करें (यदि सेलेक्ट की गई हो)
+        String? avatarBase64;
+        if (_profileImageBytes != null) {
+          avatarBase64 = base64Encode(_profileImageBytes!);
+        }
+
+        final profileData = {
           'phone': widget.phoneNumber,
           'name': _nameController.text.trim(),
           'gender': _selectedGender,
@@ -117,7 +145,14 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
           'pob': _birthPlaceController.text.trim(),
           'current_city': _cityController.text.trim(),
           'mpin': _pinController.text.trim(),
-        });
+          if (avatarBase64 != null) 'avatar_url': avatarBase64,
+        };
+
+        // 💡 फोन नंबर के आधार पर सुरक्षित रूप से Upsert करें (डुप्लीकेट एरर खत्म)
+        await supabase.from('profiles').upsert(
+              profileData,
+              onConflict: 'phone',
+            );
 
         if (!mounted) return;
         setState(() => _isLoading = false);
@@ -174,41 +209,52 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Center(
-                  child: Stack(
-                    children: [
-                      Container(
-                        width: 96,
-                        height: 96,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color:
-                              const Color(0xFFFF8F00).withValues(alpha: 0.12),
-                          border: Border.all(
-                              color: const Color(0xFFFF8F00), width: 2),
-                        ),
-                        child: const Icon(
-                          Icons.person_rounded,
-                          size: 54,
-                          color: Color(0xFFFF8F00),
-                        ),
-                      ),
-                      Positioned(
-                        bottom: 0,
-                        right: 0,
-                        child: Container(
-                          padding: const EdgeInsets.all(6),
-                          decoration: const BoxDecoration(
-                            color: Color(0xFFFF8F00),
+                  child: GestureDetector(
+                    onTap: _pickImage,
+                    child: Stack(
+                      children: [
+                        Container(
+                          width: 96,
+                          height: 96,
+                          decoration: BoxDecoration(
                             shape: BoxShape.circle,
+                            color:
+                                const Color(0xFFFF8F00).withValues(alpha: 0.12),
+                            border: Border.all(
+                                color: const Color(0xFFFF8F00), width: 2),
+                            image: _profileImageBytes != null
+                                ? DecorationImage(
+                                    image: MemoryImage(_profileImageBytes!),
+                                    fit: BoxFit.cover,
+                                  )
+                                : null,
                           ),
-                          child: const Icon(
-                            Icons.camera_alt_rounded,
-                            size: 16,
-                            color: Colors.white,
+                          child: _profileImageBytes == null
+                              ? const Icon(
+                                  Icons.person_rounded,
+                                  size: 54,
+                                  color: Color(0xFFFF8F00),
+                                )
+                              : null,
+                        ),
+                        Positioned(
+                          bottom: 0,
+                          right: 0,
+                          child: Container(
+                            padding: const EdgeInsets.all(7),
+                            decoration: const BoxDecoration(
+                              color: Color(0xFFFF8F00),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.camera_alt_rounded,
+                              size: 18,
+                              color: Colors.white,
+                            ),
                           ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
                 const SizedBox(height: 24),
@@ -375,11 +421,11 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                                       style: TextStyle(
                                         fontSize: 14,
                                         fontWeight: _selectedDate == null
-                                          ? FontWeight.normal
-                                          : FontWeight.w600,
+                                            ? FontWeight.normal
+                                            : FontWeight.w600,
                                         color: _selectedDate == null
-                                          ? Colors.grey
-                                          : Colors.black87,
+                                            ? Colors.grey
+                                            : Colors.black87,
                                       ),
                                       overflow: TextOverflow.ellipsis,
                                     ),
@@ -422,11 +468,11 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                                       style: TextStyle(
                                         fontSize: 14,
                                         fontWeight: _selectedTime == null
-                                          ? FontWeight.normal
-                                          : FontWeight.w600,
+                                            ? FontWeight.normal
+                                            : FontWeight.w600,
                                         color: _selectedTime == null
-                                          ? Colors.grey
-                                          : Colors.black87,
+                                            ? Colors.grey
+                                            : Colors.black87,
                                       ),
                                       overflow: TextOverflow.ellipsis,
                                     ),

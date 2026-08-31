@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart'; // Supabase इम्पोर्ट किया गया है
 
 const Color kPrimaryBhagwa = Color(0xFFFF6F00);
 const Color kDeepSaffron = Color(0xFFFF5722);
@@ -25,70 +26,89 @@ class RashifalScreen extends StatefulWidget {
 
 class _RashifalScreenState extends State<RashifalScreen> {
   int _selectedZodiacIndex = 0; // 0: मेष (Aries), etc.
-  int _timeframeIndex = 0; // 0: दैनिक, 1: साप्ताहिक, 2: वार्षिक
+  int _timeframeIndex = 0; // 0: दैनिक (Daily), 1: साप्ताहिक (Weekly), 2: वार्षिक (Yearly)
   bool _isPlayingAudio = false;
 
+  bool _isLoading = true;
+  String _fetchedPrediction = "";
+  String _fetchedCareer = "";
+  String _fetchedFamily = "";
+  String _fetchedHealth = "";
+  String _fetchedLuckyNumber = "7";
+  String _fetchedLuckyColor = "लाल (Red)";
+
   final List<Map<String, String>> _zodiacSigns = [
-    {"name": "मेष", "en": "Aries", "date": "Mar 21 - Apr 19", "icon": "♈"},
-    {"name": "वृषभ", "en": "Taurus", "date": "Apr 20 - May 20", "icon": "♉"},
-    {"name": "मिथुन", "en": "Gemini", "date": "May 21 - Jun 20", "icon": "♊"},
-    {"name": "कर्क", "en": "Cancer", "date": "Jun 21 - Jul 22", "icon": "♋"},
-    {"name": "सिंह", "en": "Leo", "date": "Jul 23 - Aug 22", "icon": "♌"},
-    {"name": "कन्या", "en": "Virgo", "date": "Aug 23 - Sep 22", "icon": "♍"},
-    {"name": "तुला", "en": "Libra", "date": "Sep 23 - Oct 22", "icon": "♎"},
-    {"name": "वृश्चिक", "en": "Scorpio", "date": "Oct 23 - Nov 21", "icon": "♏"},
-    {"name": "धनु", "en": "Sagittarius", "date": "Nov 22 - Dec 21", "icon": "♐"},
-    {"name": "मकर", "en": "Capricorn", "date": "Dec 22 - Jan 19", "icon": "♑"},
-    {"name": "कुंभ", "en": "Aquarius", "date": "Jan 20 - Feb 18", "icon": "♒"},
-    {"name": "मीन", "en": "Pisces", "date": "Feb 19 - Mar 20", "icon": "♓"},
+    {"name": "मेष", "en": "Aries", "key": "Aries", "date": "Mar 21 - Apr 19", "icon": "♈"},
+    {"name": "वृषभ", "en": "Taurus", "key": "Taurus", "date": "Apr 20 - May 20", "icon": "♉"},
+    {"name": "मिथुन", "en": "Gemini", "key": "Gemini", "date": "May 21 - Jun 20", "icon": "♊"},
+    {"name": "कर्क", "en": "Cancer", "key": "Cancer", "date": "Jun 21 - Jul 22", "icon": "♋"},
+    {"name": "सिंह", "en": "Leo", "key": "Leo", "date": "Jul 23 - Aug 22", "icon": "♌"},
+    {"name": "कन्या", "en": "Virgo", "key": "Virgo", "date": "Aug 23 - Sep 22", "icon": "♍"},
+    {"name": "तुला", "en": "Libra", "key": "Libra", "date": "Sep 23 - Oct 22", "icon": "♎"},
+    {"name": "वृश्चिक", "en": "Scorpio", "key": "Scorpio", "date": "Oct 23 - Nov 21", "icon": "♏"},
+    {"name": "धनु", "en": "Sagittarius", "key": "Sagittarius", "date": "Nov 22 - Dec 21", "icon": "♐"},
+    {"name": "मकर", "en": "Capricorn", "key": "Capricorn", "date": "Dec 22 - Jan 19", "icon": "♑"},
+    {"name": "कुंभ", "en": "Aquarius", "key": "Aquarius", "date": "Jan 20 - Feb 18", "icon": "♒"},
+    {"name": "मीन", "en": "Pisces", "key": "Pisces", "date": "Feb 19 - Mar 20", "icon": "♓"},
   ];
 
-  // 600-700 Words Detailed Horoscope Database (Daily / Weekly / Yearly)
-  final Map<int, Map<int, String>> _horoscopeContent = {
-    0: {
-      0: """आज का मेष राशिफल (Daily Horoscope):
-गणेशजी कहते हैं कि आज का दिन आपके लिए ऊर्जा और उत्साह से भरपूर रहेगा। कार्यक्षेत्र में आपके सहकर्मी और वरिष्ठ अधिकारी आपके नेतृत्व कौशल की सराहना करेंगे। यदि आप पिछले कुछ समय से किसी नए प्रोजेक्ट की शुरुआत करने की सोच रहे थे, तो आज का दिन अत्यंत शुभ है। 
+  @override
+  void initState() {
+    super.initState();
+    _fetchLiveRashifalFromSupabase();
+  }
 
-करियर एवं व्यापार:
-व्यापारियों को धन लाभ के नए अवसर प्राप्त हो सकते हैं। सहकर्मियों के साथ तालमेल बेहतरीन रहेगा। नौकरीपेशा जातकों को प्रमोशन या मनचाही जगह ट्रांसफर की खुशखबरी मिल सकती है। आर्थिक मामलों में समझदारी से निर्णय लें, किसी को भी उधार देने से बचें।
+  // Supabase से लाइव डेटा फेच करने का फंक्शन
+  Future<void> _fetchLiveRashifalFromSupabase() async {
+    setState(() {
+      _isLoading = true;
+    });
 
-पारिवारिक जीवन एवं प्रेम संबंध:
-जीवनसाथी के साथ आपके संबंध प्रगाढ़ होंगे। परिवार के साथ किसी धार्मिक स्थल पर जाने का योग बन सकता है। प्रेम जीवन में आपसी संवाद बेहतर होगा, जिससे गलतफहमियां दूर होंगी। माता-पिता का स्वास्थ्य उत्तम रहेगा।
+    try {
+      final currentSignKey = _zodiacSigns[_selectedZodiacIndex]["key"]!;
+      final periodString = _timeframeIndex == 0 ? 'Daily' : (_timeframeIndex == 1 ? 'Weekly' : 'Yearly');
 
-स्वास्थ्य एवं सावधानी:
-शारीरिक रूप से आप तरोताजा महसूस करेंगे, परंतु खान-पान पर विशेष ध्यान दें। बाहर के तले-भुने भोजन से परहेज करें। योग और प्राणायाम को अपनी दिनचर्या में शामिल करें।""",
+      final response = await Supabase.instance.client
+          .from('rashifal')
+          .select('*')
+          .eq('rashi_name', currentSignKey)
+          .eq('period_type', periodString)
+          .order('created_at', ascending: false)
+          .limit(1);
 
-      1: """साप्ताहिक मेष राशिफल (Weekly Horoscope):
-यह सप्ताह मेष राशि के जातकों के लिए मिश्रित परिणाम लेकर आया है। सप्ताह की शुरुआत में आपको करियर और व्यापार के सिलसिले में छोटी यात्राएं करनी पड़ सकती हैं। यह यात्राएं भविष्य में आपके लिए अत्यंत लाभकारी सिद्ध होंगी। 
-
-आर्थिक स्थिति:
-सप्ताह के मध्य में अचानक धन लाभ के योग बन रहे हैं। पैतृक संपत्ति से जुड़े विवादों का फैसला आपके पक्ष में आ सकता है। हालांकि, विलासिता की वस्तुओं पर अधिक खर्च करने से बचें। बचत पर ध्यान देना इस समय आपकी प्राथमिकता होनी चाहिए।
-
-प्रेम एवं वैवाहिक जीवन:
-विवाहित जातकों के लिए यह सप्ताह बेहद खुशनुमा रहने वाला है। जीवनसाथी के साथ क्वालिटी Time बिताने का अवसर मिलेगा। प्रेम संबंधों में गहराई आएगी और आप अपने पार्टनर के साथ भविष्य की योजनाएं साझा कर सकते हैं।
-
-स्वास्थ्य:
-मौसम में बदलाव के कारण आपको सर्दी-जुखाम या थकान की शिकायत हो सकती है। पर्याप्त मात्रा में पानी पिएं और अपने मानसिक स्वास्थ्य को बेहतर रखने के लिए संगीत सुनें या ध्यान लगाएं।""",
-
-      2: """वार्षिक मेष राशिफल (Yearly Horoscope):
-वर्ष 2026 मेष राशि के जातकों के लिए अभूतपूर्व सफलता और आत्म-विकास का वर्ष साबित होने वाला है। इस वर्ष आपके जीवन में कई सकारात्मक बदलाव आएंगे। लंबे समय से अटके हुए सरकारी कार्य पूरे होंगे और आपकी सामाजिक प्रतिष्ठा में वृद्धि होगी।
-
-व्यापार एवं वित्तीय स्थिति:
-वर्ष की शुरुआत में आपको बिजनेस के विस्तार के लिए बड़े निवेशकों का साथ मिलेगा। विदेशी स्रोतों से भी धन कमाने के योग बन रहे हैं। आर्थिक स्थिति मजबूत होगी, जिससे आप नया मकान या वाहन खरीदने का सपना पूरा कर सकेंगे।
-
-शिक्षा एवं करियर:
-विद्यार्थियों और प्रतियोगी परीक्षाओं की तैयारी कर रहे युवाओं के लिए यह वर्ष स्वर्णिम अवसरों से भरा है। उच्च शिक्षा के लिए विदेश जाने का मार्ग प्रशस्त हो सकता है। नौकरी में आपको नई जिम्मेदारियां सौंपी जाएंगी जो आपके भविष्य को मजबूत करेंगी।
-
-स्वास्थ्य एवं समग्र कल्याण:
-पूरा वर्ष आपका स्वास्थ्य कुल मिलाकर उत्तम रहेगा। ग्रहों की स्थिति आपको मानसिक रूप से मजबूत बनाएगी। अपने इष्टदेव की आराधना करें और नियमित रूप से हनुमान चालीसा का पाठ करें, इससे आपके सभी मार्ग प्रशस्त होंगे।"""
-    },
-  };
+      if (response.isNotEmpty) {
+        final data = response[0];
+        setState(() {
+          _fetchedPrediction = data['prediction'] ?? 'भविष्यफल उपलब्ध नहीं है।';
+          _fetchedCareer = data['career_finance'] ?? 'जानकारी उपलब्ध नहीं।';
+          _fetchedFamily = data['family_love'] ?? 'जानकारी उपलब्ध नहीं।';
+          _fetchedHealth = data['health'] ?? 'जानकारी उपलब्ध नहीं।';
+          _fetchedLuckyNumber = data['lucky_number'] ?? '7';
+          _fetchedLuckyColor = data['lucky_color'] ?? 'लाल (Red)';
+          _isLoading = false;
+        });
+      } else {
+        setState(() {
+          _fetchedPrediction = "इस राशि के लिए अभी कोई नया राशिफल अपडेट नहीं किया गया है। कृपया एडमिन पैनल से पब्लिश करें।";
+          _fetchedCareer = "-";
+          _fetchedFamily = "-";
+          _fetchedHealth = "-";
+          _fetchedLuckyNumber = "-";
+          _fetchedLuckyColor = "-";
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _fetchedPrediction = "डेटा लोड करने में त्रुटि: $e";
+        _isLoading = false;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final currentSign = _zodiacSigns[_selectedZodiacIndex];
-    final signContentMap = _horoscopeContent[_selectedZodiacIndex] ?? _horoscopeContent[0]!;
-    final detailedText = signContentMap[_timeframeIndex] ?? "विस्तृत भविष्यफल लोड हो रहा है...";
 
     return Scaffold(
       backgroundColor: kBgColor,
@@ -120,7 +140,10 @@ class _RashifalScreenState extends State<RashifalScreen> {
                   final sign = _zodiacSigns[index];
                   final isSelected = _selectedZodiacIndex == index;
                   return GestureDetector(
-                    onTap: () => setState(() => _selectedZodiacIndex = index),
+                    onTap: () {
+                      setState(() => _selectedZodiacIndex = index);
+                      _fetchLiveRashifalFromSupabase(); // राशि बदलने पर नया डेटा लाएगा
+                    },
                     child: Container(
                       width: 70,
                       margin: const EdgeInsets.only(right: 10),
@@ -238,6 +261,7 @@ class _RashifalScreenState extends State<RashifalScreen> {
 
             const SizedBox(height: 16),
 
+            // एडमिन पैनल से आया हुआ लाइव डेटा यहाँ शो होगा
             Container(
               padding: const EdgeInsets.all(18),
               decoration: BoxDecoration(
@@ -246,26 +270,84 @@ class _RashifalScreenState extends State<RashifalScreen> {
                 border: Border.all(color: Colors.orange.shade100),
                 boxShadow: kCardShadow,
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      const Icon(Icons.auto_stories_rounded, color: kPrimaryBhagwa, size: 18),
-                      const SizedBox(width: 8),
-                      Text(
-                        _timeframeIndex == 0 ? "आज का विस्तृत भविष्यफल" : (_timeframeIndex == 1 ? "इस सप्ताह का विस्तृत भविष्यफल" : "वर्ष 2026 का संपूर्ण भविष्यफल"),
-                        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: kTextColor),
+              child: _isLoading
+                  ? const Center(
+                      child: Padding(
+                        padding: EdgeInsets.all(30.0),
+                        child: CircularProgressIndicator(color: kPrimaryBhagwa),
                       ),
-                    ],
-                  ),
-                  const Divider(height: 20),
-                  Text(
-                    detailedText,
-                    style: const TextStyle(fontSize: 13, color: kTextColor, height: 1.6),
-                  ),
-                ],
-              ),
+                    )
+                  : Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(Icons.auto_stories_rounded, color: kPrimaryBhagwa, size: 18),
+                            const SizedBox(width: 8),
+                            Text(
+                              _timeframeIndex == 0 ? "आज का विस्तृत भविष्यफल" : (_timeframeIndex == 1 ? "इस सप्ताह का विस्तृत भविष्यफल" : "संपूर्ण भविष्यफल"),
+                              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: kTextColor),
+                            ),
+                          ],
+                        ),
+                        const Divider(height: 20),
+                        
+                        // मुख्य भविष्यफल
+                        Text(_fetchedPrediction, style: const TextStyle(fontSize: 13, color: kTextColor, height: 1.6)),
+                        const SizedBox(height: 14),
+
+                        // करियर एवं व्यापार
+                        if (_fetchedCareer.isNotEmpty) ...[
+                          const Text("💼 करियर एवं व्यापार (Career & Business):", style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: kPrimaryBhagwa)),
+                          const SizedBox(height: 4),
+                          Text(_fetchedCareer, style: const TextStyle(fontSize: 12.5, color: kTextColor, height: 1.5)),
+                          const SizedBox(height: 14),
+                        ],
+
+                        // पारिवारिक जीवन
+                        if (_fetchedFamily.isNotEmpty) ...[
+                          const Text("❤️ पारिवारिक जीवन एवं प्रेम संबंध:", style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: kPrimaryBhagwa)),
+                          const SizedBox(height: 4),
+                          Text(_fetchedFamily, style: const TextStyle(fontSize: 12.5, color: kTextColor, height: 1.5)),
+                          const SizedBox(height: 14),
+                        ],
+
+                        // स्वास्थ्य
+                        if (_fetchedHealth.isNotEmpty) ...[
+                          const Text("🧘 स्वास्थ्य एवं सावधानी (Health):", style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: kPrimaryBhagwa)),
+                          const SizedBox(height: 4),
+                          Text(_fetchedHealth, style: const TextStyle(fontSize: 12.5, color: kTextColor, height: 1.5)),
+                          const SizedBox(height: 16),
+                        ],
+
+                        // शुभ अंक और शुभ रंग कार्ड
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFFF3E0),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: Colors.orange.shade200),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceAround,
+                            children: [
+                              Row(
+                                children: [
+                                  const Text("🔢 शुभ अंक: ", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: kTextColor)),
+                                  Text(_fetchedLuckyNumber, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: kPrimaryBhagwa)),
+                                ],
+                              ),
+                              Row(
+                                children: [
+                                  const Text("🎨 शुभ रंग: ", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: kTextColor)),
+                                  Text(_fetchedLuckyColor, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: kPrimaryBhagwa)),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
             ),
 
             const SizedBox(height: 24),
@@ -279,7 +361,10 @@ class _RashifalScreenState extends State<RashifalScreen> {
     final isSelected = _timeframeIndex == index;
     return Expanded(
       child: GestureDetector(
-        onTap: () => setState(() => _timeframeIndex = index),
+        onTap: () {
+          setState(() => _timeframeIndex = index);
+          _fetchLiveRashifalFromSupabase(); // काल (दैनिक/साप्ताहिक/वार्षिक) बदलने पर डेटा लाएगा
+        },
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 10),
           decoration: BoxDecoration(

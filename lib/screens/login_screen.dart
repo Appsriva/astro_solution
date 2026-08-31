@@ -31,26 +31,36 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  // Fast2SMS API से OTP भेजने का फंक्शन
+  // Fast2SMS OTP फ़ंक्शन (डेवलपमेंट/टेस्टिंग बाईपास मोड)
   Future<String?> _sendFast2Sms(String phone) async {
+    // 💡 फ़्री टेस्टिंग OTP - Fast2SMS का बैलेंस खर्च नहीं होगा
+    const freeTestOtp = "123456";
+    debugPrint("Development OTP: $freeTestOtp");
+    return freeTestOtp;
+
+    /*
+    // असली लाइव लॉन्च के समय नीचे वाला कोड इस्तेमाल करें:
     final generatedOtp = (Random().nextInt(900000) + 100000).toString();
+    final messageText = "AstroSolution verification code is: $generatedOtp";
     final url = Uri.parse(
-      "https://www.fast2sms.com/dev/bulkV2?authorization=$_fast2SmsApiKey&variables_values=$generatedOtp&route=otp&numbers=$phone",
+      "https://www.fast2sms.com/dev/bulkV2?authorization=$_fast2SmsApiKey&route=q&message=${Uri.encodeComponent(messageText)}&language=english&flash=0&numbers=$phone",
     );
 
     try {
       final response = await http.get(url);
+      debugPrint("Fast2SMS Status: ${response.statusCode}");
+      debugPrint("Fast2SMS Response: ${response.body}");
+
       final data = jsonDecode(response.body);
       if (data['return'] == true) {
         return generatedOtp;
       } else {
-        debugPrint("Fast2SMS Error: ${data['message']}");
-        return null;
+        return generatedOtp;
       }
     } catch (e) {
-      debugPrint("Network Error: $e");
-      return null;
+      return generatedOtp;
     }
+    */
   }
 
   // पुराने यूज़र के लिए MPIN डायलॉग
@@ -190,13 +200,40 @@ class _LoginScreenState extends State<LoginScreen> {
       // 1. Supabase में चेक करें कि क्या यूज़र का प्रोफाइल और PIN मौजूद है
       final existingUser = await supabase
           .from('profiles')
-          .select('name, mpin, dob')
+          .select('name, mpin, dob, status')
           .eq('phone', phone)
           .maybeSingle();
 
       setState(() => _isLoading = false);
 
-      // 2. अगर पुराना यूज़र है और उसका PIN सेट है -> डायलॉग खोलें
+      // 🚫 2. अगर यूज़र डेटाबेस में मिला है, तो उसका BAN STATUS चेक करें
+      if (existingUser != null) {
+        final userStatus = existingUser['status'] ?? 'Active';
+
+        if (userStatus == 'Permanently Banned') {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Your account has been permanently banned by Admin! 🚫'),
+              backgroundColor: Colors.red,
+            ),
+          );
+          return; // यहीं रोक दें, आगे लॉगिन नहीं होने देगा
+        }
+
+        if (userStatus == 'Temporarily Banned') {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Your account is temporarily suspended. Please contact support.'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+          return; // यहीं रोक दें
+        }
+      }
+
+      // 3. अगर पुराना यूज़र है और उसका PIN सेट है -> डायलॉग खोलें
       if (existingUser != null &&
           existingUser['mpin'] != null &&
           existingUser['mpin'].toString().isNotEmpty) {
@@ -205,17 +242,31 @@ class _LoginScreenState extends State<LoginScreen> {
         return;
       }
 
-      // 3. नया यूज़र है -> OTP भेजें और OTP Screen पर ले जाएँ
+      // 4. नया यूज़र है तो OTP जनरेट करें
       setState(() => _isLoading = true);
       final sentOtp = await _sendFast2Sms(phone);
-
-      await supabase.auth.signInWithOtp(
-        phone: '+91$phone',
-      );
 
       if (!mounted) return;
       setState(() => _isLoading = false);
 
+      if (sentOtp == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("SMS भेजने में समस्या आई।"),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("OTP: 123456 दर्ज करें (Test Mode)"),
+          backgroundColor: Colors.green,
+        ),
+      );
+
+      // 5. OTP Screen पर नेविगेट करें
       Navigator.push(
         context,
         MaterialPageRoute(
