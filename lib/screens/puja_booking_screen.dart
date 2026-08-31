@@ -41,6 +41,26 @@ class VedicPujaItem {
     required this.nextDate,
     required this.onlineSlots,
   });
+
+  // Supabase Map से ऑब्जेक्ट बनाने के लिए Factory Constructor
+  factory VedicPujaItem.fromMap(Map<String, dynamic> map) {
+    return VedicPujaItem(
+      id: map['id']?.toString() ?? '',
+      title: map['title'] ?? 'वैदिक पूजा',
+      deity: map['deity'] ?? 'देवाधिदेव महादेव',
+      templeLocation: map['temples']?['name'] ?? map['temple_location'] ?? 'प्रमुख मंदिर, भारत',
+      templeAddress: map['temples']?['full_address'] ?? map['temple_address'] ?? 'प्रमुख तीर्थ स्थल परिसर',
+      benefit: map['description'] ?? 'समस्त कष्टों का निवारण एवं मनोकामना पूर्ति।',
+      duration: map['duration'] ?? '2 घंटे',
+      category: map['category'] ?? 'दोष निवारण',
+      priceSingle: "₹${map['dakshina_amount'] ?? '1,100'}",
+      priceFamily: "₹${(double.tryParse(map['dakshina_amount']?.toString() ?? '1100') ?? 1100) * 2}",
+      priceMaha: "₹${(double.tryParse(map['dakshina_amount']?.toString() ?? '1100') ?? 1100) * 5}",
+      imageUrl: map['image_url'] ?? "https://images.unsplash.com/photo-1609766857041-ed402ea8069a?w=600&auto=format&fit=crop&q=80",
+      nextDate: map['next_date'] ?? 'आगामी शुभ मुहूर्त',
+      onlineSlots: ["प्रातः 07:30 AM - 09:30 AM", "दोपहर 11:30 AM - 01:30 PM", "संध्या 06:30 PM - 08:30 PM"],
+    );
+  }
 }
 
 class PujaBookingScreen extends StatefulWidget {
@@ -63,7 +83,34 @@ class _PujaBookingScreenState extends State<PujaBookingScreen> {
     "शत्रु व ग्रह शांति",
   ];
 
-  static const List<VedicPujaItem> _pujasList = [
+  // Supabase से लाइव डेटा फेच करने के लिए Future
+  late Future<List<VedicPujaItem>> _pujasFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _pujasFuture = _fetchPujasFromSupabase();
+  }
+
+  Future<List<VedicPujaItem>> _fetchPujasFromSupabase() async {
+    try {
+      final response = await Supabase.instance.client
+          .from('poojas')
+          .select('*, temples(name, full_address, city)')
+          .order('created_at', ascending: false);
+
+      if (response != null && (response as List).isNotEmpty) {
+        return (response as List).map((item) => VedicPujaItem.fromMap(item)).toList();
+      }
+    } catch (e) {
+      debugPrint("Supabase fetch error: $e");
+    }
+    // यदि डेटाबेस खाली हो या एरर आए, तो फॉलबैक के लिए पुराना डमी डेटा रिटर्न करें
+    return _fallbackPujasList;
+  }
+
+  // पुराना डमी डेटा (फॉलबैक सुरक्षा के लिए)
+  static const List<VedicPujaItem> _fallbackPujasList = [
     VedicPujaItem(
       id: "pj_1",
       title: "श्री महाकाल रुद्राभिषेक एवं भस्म आरती महापूजा",
@@ -95,70 +142,6 @@ class _PujaBookingScreenState extends State<PujaBookingScreen> {
       imageUrl: "https://images.unsplash.com/photo-1561361513-2d000a50f0dc?w=600&auto=format&fit=crop&q=80",
       nextDate: "आगामी त्रयोदशी तिथि",
       onlineSlots: ["प्रातः 06:00 AM - 10:00 AM", "दोपहर 02:00 PM - 06:00 PM"],
-    ),
-    VedicPujaItem(
-      id: "pj_3",
-      title: "कनकधारा स्तोत्र पाठ एवं श्री सूक्त महालक्ष्मी महायज्ञ",
-      deity: "माता महालक्ष्मी एवं कुबेर देव",
-      templeLocation: "महालक्ष्मी मंदिर, कोल्हापुर / मुंबई",
-      templeAddress: "श्री महालक्ष्मी मंदिर, भुलाबाई देसाई रोड, महालक्ष्मी, मुंबई - 400026",
-      benefit: "कर्ज मुक्ति, व्यापार वृद्धि एवं अटके हुए धन की शीघ्र प्राप्ति।",
-      duration: "2 घंटे",
-      category: "धन व व्यापार",
-      priceSingle: "₹1,500",
-      priceFamily: "₹3,100",
-      priceMaha: "₹7,500",
-      imageUrl: "https://images.unsplash.com/photo-1567591414240-e1e3b2e3a139?w=600&auto=format&fit=crop&q=80",
-      nextDate: "आगामी शुक्रवार (वैभव लक्ष्मी दिवस)",
-      onlineSlots: ["प्रातः 08:00 AM - 10:00 AM", "संध्या 07:00 PM - 09:00 PM"],
-    ),
-    VedicPujaItem(
-      id: "pj_4",
-      title: "मां कात्यायनी शीघ्र विवाह एवं मांगलिक दोष निवारण पूजा",
-      deity: "मां भगवती कात्यायनी",
-      templeLocation: "वृंदावन धाम, मथुरा",
-      templeAddress: "मां कात्यायनी शक्तिपीठ, रंगनाथ मंदिर मार्ग, वृंदावन (मथुरा) - 281121",
-      benefit: "विवाह में आ रही अड़चनों का नाश, मनचाहा योग्य जीवनसाथी।",
-      duration: "1 घंटा 45 मिनट",
-      category: "विवाह व दांपत्य",
-      priceSingle: "₹1,250",
-      priceFamily: "₹2,500",
-      priceMaha: "₹5,500",
-      imageUrl: "https://images.unsplash.com/photo-1545128485-c400e7702796?w=600&auto=format&fit=crop&q=80",
-      nextDate: "आगामी गुरुवार",
-      onlineSlots: ["प्रातः 09:00 AM - 10:45 AM", "दोपहर 03:30 PM - 05:15 PM"],
-    ),
-    VedicPujaItem(
-      id: "pj_5",
-      title: "मां बगलामुखी शत्रु विनाशक एवं कोर्ट-कचहरी विजय अनुष्ठान",
-      deity: "मां पीतांबरा बगलामुखी",
-      templeLocation: "नलखेड़ा / दतिया शक्तिपीठ",
-      templeAddress: "मां बगलामुखी मंदिर, लखुंदर नदी तट, नलखेड़ा, आगर मालवा (म.प्र.) - 465445",
-      benefit: "शत्रु बाधा शांति, मुकदमों में विजय व व्यापारिक प्रतिस्पर्धा निवारण।",
-      duration: "3 घंटे",
-      category: "शत्रु व ग्रह शांति",
-      priceSingle: "₹2,500",
-      priceFamily: "₹5,500",
-      priceMaha: "₹15,000",
-      imageUrl: "https://images.unsplash.com/photo-1590736969955-71cc94801759?w=600&auto=format&fit=crop&q=80",
-      nextDate: "आगामी अष्टमी तिथि",
-      onlineSlots: ["रात्रि 08:00 PM - 11:00 PM (निशीथ काल)"],
-    ),
-    VedicPujaItem(
-      id: "pj_6",
-      title: "नवग्रह शांति एवं संपूर्ण वास्तु दोष निवारण हवन",
-      deity: "नवग्रह देवता एवं वास्तु पुरुष",
-      templeLocation: "वैदिक गुरुकुल तीर्थ, प्रयागराज",
-      templeAddress: "त्रिवेणी संगम तट, दारागंज, प्रयागराज (उ.प्र.) - 211006",
-      benefit: "घर-परिवार में गृह क्लेश समाप्ति, सुख-शांति एवं 9 ग्रहों की शुभ दृष्टि।",
-      duration: "2 घंटे 15 मिनट",
-      category: "दोष निवारण",
-      priceSingle: "₹1,100",
-      priceFamily: "₹2,100",
-      priceMaha: "₹4,500",
-      imageUrl: "https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=600&auto=format&fit=crop&q=80",
-      nextDate: "आगामी पूर्णिमा तिथि",
-      onlineSlots: ["प्रातः 08:30 AM - 10:45 AM", "दोपहर 12:00 PM - 02:15 PM"],
     ),
   ];
 
@@ -600,20 +583,15 @@ class _PujaBookingScreenState extends State<PujaBookingScreen> {
                         // Insert to Supabase puja_bookings
                         try {
                           final user = Supabase.instance.client.auth.currentUser;
-                          if (user != null) {
-                            await Supabase.instance.client.from('puja_bookings').insert({
-                              'user_id': user.id,
-                              'puja_title': puja.title,
-                              'temple_location': puja.templeLocation,
-                              'dakshina': numericDakshina,
-                              'puja_date': puja.nextDate,
-                              'yajman_name': yajmanName,
-                              'gotra': gotra,
-                              'sankalp_text': sankalp,
-                              'phone': phone,
-                              'status': 'Sankalp Registered',
-                            });
-                          }
+                          await Supabase.instance.client.from('pooja_bookings').insert({
+                            if (user != null) 'user_id': user.id,
+                            'user_name': yajmanName,
+                            'user_phone': phone,
+                            'mode': pujaMode == "online" ? "Online" : "Offline",
+                            'booking_amount': numericDakshina,
+                            'sankalp_details': "गोत्र: $gotra | संकल्प: $sankalp",
+                            'status': 'Confirmed',
+                          });
                         } catch (_) {}
 
                         Navigator.pop(modalContext);
@@ -735,7 +713,6 @@ class _PujaBookingScreenState extends State<PujaBookingScreen> {
               ),
               const SizedBox(height: 12),
 
-              // Digital Sankalp / Entry Pass Box
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(12),
@@ -811,17 +788,6 @@ class _PujaBookingScreenState extends State<PujaBookingScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final query = _searchController.text.trim().toLowerCase();
-    final filteredPujas = _pujasList.where((puja) {
-      final matchesQuery = puja.title.toLowerCase().contains(query) ||
-          puja.deity.toLowerCase().contains(query) ||
-          puja.templeLocation.toLowerCase().contains(query);
-
-      if (!matchesQuery) return false;
-      if (_selectedCategory == "सभी") return true;
-      return puja.category == _selectedCategory;
-    }).toList();
-
     return Scaffold(
       backgroundColor: kBgColor,
       appBar: AppBar(
@@ -904,10 +870,30 @@ class _PujaBookingScreenState extends State<PujaBookingScreen> {
 
           const SizedBox(height: 10),
 
-          // 3. Puja Cards Listing
+          // 3. Supabase FutureBuilder Listing
           Expanded(
-            child: filteredPujas.isEmpty
-                ? Center(
+            child: FutureBuilder<List<VedicPujaItem>>(
+              future: _pujasFuture,
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator(color: kPrimaryBhagwa));
+                }
+                
+                final pujasList = snapshot.data ?? _fallbackPujasList;
+                final query = _searchController.text.trim().toLowerCase();
+                
+                final filteredPujas = pujasList.where((puja) {
+                  final matchesQuery = puja.title.toLowerCase().contains(query) ||
+                      puja.deity.toLowerCase().contains(query) ||
+                      puja.templeLocation.toLowerCase().contains(query);
+
+                  if (!matchesQuery) return false;
+                  if (_selectedCategory == "सभी") return true;
+                  return puja.category == _selectedCategory;
+                }).toList();
+
+                if (filteredPujas.isEmpty) {
+                  return Center(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: const [
@@ -916,16 +902,20 @@ class _PujaBookingScreenState extends State<PujaBookingScreen> {
                         Text("कोई पूजा नहीं मिली!", style: TextStyle(fontSize: 14, color: kSubTextColor, fontWeight: FontWeight.bold)),
                       ],
                     ),
-                  )
-                : ListView.builder(
-                    physics: const ClampingScrollPhysics(),
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
-                    itemCount: filteredPujas.length,
-                    itemBuilder: (context, index) {
-                      final puja = filteredPujas[index];
-                      return _buildPujaCard(puja);
-                    },
-                  ),
+                  );
+                }
+
+                return ListView.builder(
+                  physics: const ClampingScrollPhysics(),
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
+                  itemCount: filteredPujas.length,
+                  itemBuilder: (context, index) {
+                    final puja = filteredPujas[index];
+                    return _buildPujaCard(puja);
+                  },
+                );
+              },
+            ),
           ),
         ],
       ),
