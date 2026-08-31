@@ -9,6 +9,21 @@ const Color kCardColor = Colors.white;
 const Color kTextColor = Color(0xFF2E1500);
 const Color kSubTextColor = Color(0xFF795548);
 
+// पंडित प्रोफाइल मॉडल (कॉल/चैट स्क्रीन जैसा लुक)
+class PanditProfile {
+  final String name;
+  final String skills;
+  final String rating;
+  final String imageUrl;
+
+  PanditProfile({
+    required this.name,
+    required this.skills,
+    required this.rating,
+    required this.imageUrl,
+  });
+}
+
 class VedicPujaItem {
   final String id;
   final String title;
@@ -21,9 +36,11 @@ class VedicPujaItem {
   final String priceSingle;
   final String priceFamily;
   final String priceMaha;
+  final String basePrice;
   final String imageUrl;
   final String nextDate;
   final List<String> onlineSlots;
+  final List<PanditProfile> assignedPandits; // पंडित प्रोफाइल लिस्ट
 
   const VedicPujaItem({
     required this.id,
@@ -37,13 +54,36 @@ class VedicPujaItem {
     required this.priceSingle,
     required this.priceFamily,
     required this.priceMaha,
+    required this.basePrice,
     required this.imageUrl,
     required this.nextDate,
     required this.onlineSlots,
+    required this.assignedPandits,
   });
 
   // Supabase Map से ऑब्जेक्ट बनाने के लिए Factory Constructor
   factory VedicPujaItem.fromMap(Map<String, dynamic> map) {
+    var panditsRaw = map['assigned_pandits'];
+    List<PanditProfile> parsedPandits = [];
+    
+    if (panditsRaw != null && panditsRaw is List) {
+      parsedPandits = panditsRaw.map((e) {
+        return PanditProfile(
+          name: e.toString(),
+          skills: "कर्मकांड, वैदिक मंत्रोच्चार, रुद्राभिषेक",
+          rating: "4.9 ⭐ (1.2k)",
+          imageUrl: "https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=200&auto=format&fit=crop&q=80",
+        );
+      }).toList();
+    } else {
+      parsedPandits = [
+        PanditProfile(name: 'पं. राधेश्याम शास्त्री', skills: 'मुख्य आचार्य, महाकाल विशेषज्ञ', rating: '5.0 ⭐', imageUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200'),
+        PanditProfile(name: 'आचार्य सुरेश शास्त्री', skills: 'काशी विद्वान, रुद्राभिषेक', rating: '4.8 ⭐', imageUrl: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=200'),
+      ];
+    }
+
+    final priceStr = "₹${map['dakshina_amount'] ?? '1,100'}";
+
     return VedicPujaItem(
       id: map['id']?.toString() ?? '',
       title: map['title'] ?? 'वैदिक पूजा',
@@ -53,12 +93,14 @@ class VedicPujaItem {
       benefit: map['description'] ?? 'समस्त कष्टों का निवारण एवं मनोकामना पूर्ति।',
       duration: map['duration'] ?? '2 घंटे',
       category: map['category'] ?? 'दोष निवारण',
-      priceSingle: "₹${map['dakshina_amount'] ?? '1,100'}",
-      priceFamily: "₹${(double.tryParse(map['dakshina_amount']?.toString() ?? '1100') ?? 1100) * 2}",
-      priceMaha: "₹${(double.tryParse(map['dakshina_amount']?.toString() ?? '1100') ?? 1100) * 5}",
+      priceSingle: priceStr,
+      priceFamily: priceStr,
+      priceMaha: priceStr,
+      basePrice: priceStr,
       imageUrl: map['image_url'] ?? "https://images.unsplash.com/photo-1609766857041-ed402ea8069a?w=600&auto=format&fit=crop&q=80",
       nextDate: map['next_date'] ?? 'आगामी शुभ मुहूर्त',
       onlineSlots: ["प्रातः 07:30 AM - 09:30 AM", "दोपहर 11:30 AM - 01:30 PM", "संध्या 06:30 PM - 08:30 PM"],
+      assignedPandits: parsedPandits,
     );
   }
 }
@@ -97,51 +139,39 @@ class _PujaBookingScreenState extends State<PujaBookingScreen> {
       final response = await Supabase.instance.client
           .from('poojas')
           .select('*, temples(name, full_address, city)')
-          .order('created_at', ascending: false);
+          .order('created_at');
 
-      if (response != null && (response as List).isNotEmpty) {
+      if ((response as List).isNotEmpty) {
         return (response as List).map((item) => VedicPujaItem.fromMap(item)).toList();
       }
     } catch (e) {
       debugPrint("Supabase fetch error: $e");
     }
-    // यदि डेटाबेस खाली हो या एरर आए, तो फॉलबैक के लिए पुराना डमी डेटा रिटर्न करें
     return _fallbackPujasList;
   }
 
   // पुराना डमी डेटा (फॉलबैक सुरक्षा के लिए)
-  static const List<VedicPujaItem> _fallbackPujasList = [
+  static final List<VedicPujaItem> _fallbackPujasList = [
     VedicPujaItem(
       id: "pj_1",
       title: "श्री महाकाल रुद्राभिषेक एवं भस्म आरती महापूजा",
       deity: "देवाधिदेव महादेव (महाकाल)",
       templeLocation: "उज्जैन धाम, मध्य प्रदेश",
-      templeAddress: "श्री महाकालेश्वर ज्योतिर्लिंग मंदिर परिसर, जयसिंहपुरा, उज्जैन (म.प्र.) - 456006",
+      templeAddress: "श्री महाकालेश्वर ज्योतिर्लिंग मंदिर परिसर, उज्जैन (म.प्र.) - 456006",
       benefit: "समस्त पापों, अकाल मृत्यु भय व कालसर्प दोष से मुक्ति।",
       duration: "2 घंटे 30 मिनट",
       category: "दोष निवारण",
       priceSingle: "₹1,100",
-      priceFamily: "₹2,100",
-      priceMaha: "₹5,100",
+      priceFamily: "₹1,100",
+      priceMaha: "₹1,100",
+      basePrice: "₹1,100",
       imageUrl: "https://images.unsplash.com/photo-1609766857041-ed402ea8069a?w=600&auto=format&fit=crop&q=80",
       nextDate: "आगामी सोमवार (सोम प्रदोष)",
       onlineSlots: ["प्रातः 07:30 AM - 09:30 AM", "दोपहर 11:30 AM - 01:30 PM", "संध्या 06:30 PM - 08:30 PM"],
-    ),
-    VedicPujaItem(
-      id: "pj_2",
-      title: "सवा लाख महामृत्युंजय मंत्र जाप एवं हवन",
-      deity: "भगवान शिव मृत्युंजय",
-      templeLocation: "काशी विश्वनाथ धाम, वाराणसी",
-      templeAddress: "श्री काशी विश्वनाथ मंदिर कॉरीडोर, ललिता घाट मार्ग, वाराणसी (उ.प्र.) - 221001",
-      benefit: "गंभीर रोग निवारण, दीर्घायु स्वास्थ्य एवं नकारात्मक ऊर्जा का नाश।",
-      duration: "4 घंटे अनुष्ठान",
-      category: "स्वास्थ्य व आयु",
-      priceSingle: "₹2,100",
-      priceFamily: "₹5,100",
-      priceMaha: "₹11,000",
-      imageUrl: "https://images.unsplash.com/photo-1561361513-2d000a50f0dc?w=600&auto=format&fit=crop&q=80",
-      nextDate: "आगामी त्रयोदशी तिथि",
-      onlineSlots: ["प्रातः 06:00 AM - 10:00 AM", "दोपहर 02:00 PM - 06:00 PM"],
+      assignedPandits: [
+        PanditProfile(name: 'पं. राधेश्याम शास्त्री', skills: 'मुख्य आचार्य, महाकाल विशेषज्ञ', rating: '5.0 ⭐', imageUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200'),
+        PanditProfile(name: 'आचार्य सुरेश शास्त्री', skills: 'काशी विद्वान, रुद्राभिषेक', rating: '4.8 ⭐', imageUrl: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=200'),
+      ],
     ),
   ];
 
@@ -153,8 +183,13 @@ class _PujaBookingScreenState extends State<PujaBookingScreen> {
 
   void _openBookingModal(VedicPujaItem puja) {
     String pujaMode = "online"; // 'online' or 'offline'
-    String selectedPackageType = "family"; // 'single', 'family', 'maha'
+    String selectedPackageType = "परिवार संकल्प"; // 'एकल संकल्प', 'परिवार संकल्प', 'महा अनुष्ठान'
     String selectedSlot = puja.onlineSlots.first;
+    // डिफ़ॉल्ट रूप से पहला उपलब्ध पंडित चुनें
+    PanditProfile selectedPandit = puja.assignedPandits.isNotEmpty 
+        ? puja.assignedPandits.first 
+        : PanditProfile(name: 'मुख्य आचार्य', skills: 'वैदिक पंडित', rating: '5.0 ⭐', imageUrl: '');
+    
     final TextEditingController nameController = TextEditingController(text: "यजमान");
     final TextEditingController gotraController = TextEditingController(text: "कश्यप");
     final TextEditingController addressController = TextEditingController();
@@ -168,9 +203,7 @@ class _PujaBookingScreenState extends State<PujaBookingScreen> {
       builder: (modalContext) {
         return StatefulBuilder(
           builder: (context, setModalState) {
-            final currentPrice = selectedPackageType == "single"
-                ? puja.priceSingle
-                : (selectedPackageType == "family" ? puja.priceFamily : puja.priceMaha);
+            final currentPrice = puja.basePrice;
 
             return Container(
               height: MediaQuery.of(context).size.height * 0.90,
@@ -325,6 +358,75 @@ class _PujaBookingScreenState extends State<PujaBookingScreen> {
 
                           const SizedBox(height: 14),
 
+                          // 1.5 PANDIT SELECTION SECTION (कॉल/चैट स्क्रीन जैसी प्रोफाईल लिस्ट)
+                          const Text(
+                            "पूजन संपन्न करने हेतु आचार्य/पंडित चुनें (Select Pandit):",
+                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: kTextColor),
+                          ),
+                          const SizedBox(height: 8),
+                          Column(
+                            children: puja.assignedPandits.map((pandit) {
+                              final isSelected = selectedPandit.name == pandit.name;
+                              return GestureDetector(
+                                onTap: () => setModalState(() => selectedPandit = pandit),
+                                child: Container(
+                                  margin: const EdgeInsets.only(bottom: 8),
+                                  padding: const EdgeInsets.all(10),
+                                  decoration: BoxDecoration(
+                                    color: isSelected ? const Color(0xFFFFF7F0) : Colors.white,
+                                    borderRadius: BorderRadius.circular(14),
+                                    border: Border.all(
+                                      color: isSelected ? kPrimaryBhagwa : Colors.orange.shade200,
+                                      width: isSelected ? 2 : 1,
+                                    ),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      CircleAvatar(
+                                        radius: 24,
+                                        backgroundImage: NetworkImage(pandit.imageUrl),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Row(
+                                              children: [
+                                                Text(
+                                                  pandit.name,
+                                                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: kTextColor),
+                                                ),
+                                                const SizedBox(width: 6),
+                                                Text(
+                                                  pandit.rating,
+                                                  style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.amber),
+                                                ),
+                                              ],
+                                            ),
+                                            const SizedBox(height: 3),
+                                            Text(
+                                              pandit.skills,
+                                              style: const TextStyle(fontSize: 10, color: kSubTextColor),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      Radio<String>(
+                                        value: pandit.name,
+                                        groupValue: selectedPandit.name,
+                                        activeColor: kPrimaryBhagwa,
+                                        onChanged: (val) => setModalState(() => selectedPandit = pandit),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            }).toList(),
+                          ),
+
+                          const SizedBox(height: 14),
+
                           // 2. DYNAMIC MODE DETAILS
                           if (pujaMode == "online") ...[
                             Container(
@@ -373,7 +475,7 @@ class _PujaBookingScreenState extends State<PujaBookingScreen> {
                                   ),
                                   const SizedBox(height: 8),
                                   const Text(
-                                    "✨ पुरोहित जी लाइव वीडियो पर आपका नाम व गोत्र उच्चारित कर संकल्प करवाएंगे। पूजा उपरांत अभिमंत्रित भस्म, रक्षासूत्र व प्रसाद आपके पते पर भेजा जाएगा।",
+                                    "✨ चयनित पुरोहित जी लाइव वीडियो पर आपका नाम व गोत्र उच्चारित कर संकल्प करवाएंगे। पूजा उपरांत अभिमंत्रित भस्म, रक्षासूत्र व प्रसाद आपके पते पर भेजा जाएगा।",
                                     style: TextStyle(fontSize: 10, color: kSubTextColor, height: 1.3),
                                   ),
                                 ],
@@ -410,7 +512,7 @@ class _PujaBookingScreenState extends State<PujaBookingScreen> {
                                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                                     decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8)),
                                     child: Text(
-                                      "📍 रिपोर्टिंग समय: पूजा से 30 मिनट पूर्व • पुरोहित संपर्क नंबर पास में मिलेगा।",
+                                      "📍 रिपोर्टिंग समय: पूजा से 30 मिनट पूर्व • चयनित आचार्य जी का संपर्क नंबर पास में मिलेगा।",
                                       style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Colors.green.shade800),
                                     ),
                                   ),
@@ -433,20 +535,20 @@ class _PujaBookingScreenState extends State<PujaBookingScreen> {
                               Expanded(
                                 child: _buildPackageOption(
                                   title: "एकल संकल्प",
-                                  price: puja.priceSingle,
+                                  price: puja.basePrice,
                                   desc: "1 व्यक्ति का नाम",
-                                  isSelected: selectedPackageType == "single",
-                                  onTap: () => setModalState(() => selectedPackageType = "single"),
+                                  isSelected: selectedPackageType == "एकल संकल्प",
+                                  onTap: () => setModalState(() => selectedPackageType = "एकल संकल्प"),
                                 ),
                               ),
                               const SizedBox(width: 6),
                               Expanded(
                                 child: _buildPackageOption(
                                   title: "परिवार संकल्प",
-                                  price: puja.priceFamily,
+                                  price: puja.basePrice,
                                   desc: "पूरे परिवार के नाम",
-                                  isSelected: selectedPackageType == "family",
-                                  onTap: () => setModalState(() => selectedPackageType = "family"),
+                                  isSelected: selectedPackageType == "परिवार संकल्प",
+                                  onTap: () => setModalState(() => selectedPackageType = "परिवार संकल्प"),
                                   isPopular: true,
                                 ),
                               ),
@@ -454,10 +556,10 @@ class _PujaBookingScreenState extends State<PujaBookingScreen> {
                               Expanded(
                                 child: _buildPackageOption(
                                   title: "महा अनुष्ठान",
-                                  price: puja.priceMaha,
+                                  price: puja.basePrice,
                                   desc: "विशेष व्यक्तिगत हवन",
-                                  isSelected: selectedPackageType == "maha",
-                                  onTap: () => setModalState(() => selectedPackageType = "maha"),
+                                  isSelected: selectedPackageType == "महा अनुष्ठान",
+                                  onTap: () => setModalState(() => selectedPackageType = "महा अनुष्ठान"),
                                 ),
                               ),
                             ],
@@ -589,7 +691,7 @@ class _PujaBookingScreenState extends State<PujaBookingScreen> {
                             'user_phone': phone,
                             'mode': pujaMode == "online" ? "Online" : "Offline",
                             'booking_amount': numericDakshina,
-                            'sankalp_details': "गोत्र: $gotra | संकल्प: $sankalp",
+                            'sankalp_details': "गोत्र: $gotra | आचार्य: ${selectedPandit.name} | संकल्प: $sankalp",
                             'status': 'Confirmed',
                           });
                         } catch (_) {}
@@ -603,6 +705,7 @@ class _PujaBookingScreenState extends State<PujaBookingScreen> {
                           gotra: gotra,
                           slotOrAddress: pujaMode == "online" ? selectedSlot : puja.templeAddress,
                           sankalp: sankalp,
+                          panditName: selectedPandit.name,
                         );
                       },
                       icon: const Icon(Icons.check_circle_rounded, size: 18),
@@ -675,6 +778,7 @@ class _PujaBookingScreenState extends State<PujaBookingScreen> {
     required String gotra,
     required String slotOrAddress,
     required String sankalp,
+    required String panditName,
   }) {
     final isOnline = mode == "online";
 
@@ -733,6 +837,7 @@ class _PujaBookingScreenState extends State<PujaBookingScreen> {
                     const Divider(height: 12),
                     _buildReceiptRow("यजमान:", name),
                     _buildReceiptRow("गोत्र:", gotra),
+                    _buildReceiptRow("चयनित आचार्य:", panditName),
                     _buildReceiptRow("पूजा माध्यम:", isOnline ? "ऑनलाइन लाइव वीडियो" : "मंदिर में प्रत्यक्ष"),
                     _buildReceiptRow(
                       isOnline ? "लाइव स्लॉट समय:" : "मंदिर का पता:",
@@ -1017,7 +1122,7 @@ class _PujaBookingScreenState extends State<PujaBookingScreen> {
                         const Text("दक्षिणा शुल्क:", style: TextStyle(fontSize: 9, color: kSubTextColor)),
                         Row(
                           children: [
-                            Text(puja.priceSingle, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: kTextColor)),
+                            Text(puja.basePrice, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: kTextColor)),
                             const SizedBox(width: 4),
                             const Text("से शुरू", style: TextStyle(fontSize: 10, color: kSubTextColor)),
                           ],
