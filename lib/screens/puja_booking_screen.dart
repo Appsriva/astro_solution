@@ -682,19 +682,24 @@ class _PujaBookingScreenState extends State<PujaBookingScreen> {
                         final sankalp = sankalpWishController.text.trim();
                         final numericDakshina = double.tryParse(currentPrice.replaceAll(RegExp(r'[^0-9]'), '')) ?? 1100.0;
 
-                        // Insert to Supabase puja_bookings
+                        // Insert to Supabase matching your database columns (`puja_title`, `temple_location`, `dakshina`, `puja_date`, `yajman_name`)
                         try {
                           final user = Supabase.instance.client.auth.currentUser;
                           await Supabase.instance.client.from('pooja_bookings').insert({
                             if (user != null) 'user_id': user.id,
-                            'user_name': yajmanName,
+                            'puja_title': puja.title,
+                            'temple_location': puja.templeLocation,
+                            'dakshina': numericDakshina,
+                            'puja_date': puja.nextDate,
+                            'yajman_name': yajmanName,
                             'user_phone': phone,
                             'mode': pujaMode == "online" ? "Online" : "Offline",
-                            'booking_amount': numericDakshina,
                             'sankalp_details': "गोत्र: $gotra | आचार्य: ${selectedPandit.name} | संकल्प: $sankalp",
                             'status': 'Confirmed',
                           });
-                        } catch (_) {}
+                        } catch (e) {
+                          debugPrint("Insert error: $e");
+                        }
 
                         Navigator.pop(modalContext);
                         _showPujaSuccessDialog(
@@ -848,6 +853,37 @@ class _PujaBookingScreenState extends State<PujaBookingScreen> {
                   ],
                 ),
               ),
+
+              // यदि ऑनलाइन पूजा है तो "Go Live & Start Puja" बटन दिखाएं
+              if (isOnline) ...[
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: () {
+                      Navigator.pop(context); // डायलॉग बंद करें
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => LivePujaVideoCallScreen(
+                            pujaTitle: puja.title,
+                            panditName: panditName,
+                            slotTime: slotOrAddress,
+                          ),
+                        ),
+                      );
+                    },
+                    icon: const Icon(Icons.video_call_rounded, size: 20),
+                    label: const Text("🎥 Go Live & Start Puja", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green.shade700,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                  ),
+                ),
+              ],
 
               const SizedBox(height: 14),
               SizedBox(
@@ -1141,6 +1177,90 @@ class _PujaBookingScreenState extends State<PujaBookingScreen> {
                       ),
                     ),
                   ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// लाइव वीडियो कॉल / स्ट्रीमिंग स्क्रीन
+class LivePujaVideoCallScreen extends StatelessWidget {
+  final String pujaTitle;
+  final String panditName;
+  final String slotTime;
+
+  const LivePujaVideoCallScreen({
+    super.key,
+    required this.pujaTitle,
+    required this.panditName,
+    required this.slotTime,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(pujaTitle, style: const TextStyle(fontSize: 13, color: Colors.white, fontWeight: FontWeight.bold)),
+            Text("आचार्य: $panditName • स्लॉट: $slotTime", style: const TextStyle(fontSize: 10, color: Colors.orangeAccent)),
+          ],
+        ),
+      ),
+      body: Stack(
+        children: [
+          Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.live_tv_rounded, size: 72, color: Colors.orangeAccent),
+                const SizedBox(height: 20),
+                const Text(
+                  "पंडित जी के साथ लाइव पूजा कनेक्ट हो रही है...\nकृपया अपने कैमरे और माइक की अनुमति दें।",
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.white70, fontSize: 13, height: 1.4),
+                ),
+              ],
+            ),
+          ),
+          Positioned(
+            bottom: 40,
+            left: 0,
+            right: 0,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                FloatingActionButton(
+                  heroTag: "mic",
+                  backgroundColor: Colors.white24,
+                  onPressed: () {},
+                  child: const Icon(Icons.mic_rounded, color: Colors.white),
+                ),
+                const SizedBox(width: 24),
+                FloatingActionButton(
+                  heroTag: "end_call",
+                  backgroundColor: Colors.red,
+                  onPressed: () => Navigator.pop(context),
+                  child: const Icon(Icons.call_end_rounded, color: Colors.white),
+                ),
+                const SizedBox(width: 24),
+                FloatingActionButton(
+                  heroTag: "camera",
+                  backgroundColor: Colors.white24,
+                  onPressed: () {},
+                  child: const Icon(Icons.videocam_rounded, color: Colors.white),
                 ),
               ],
             ),
