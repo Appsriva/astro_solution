@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:js' as js;
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -9,7 +12,28 @@ const Color kCardColor = Colors.white;
 const Color kTextColor = Color(0xFF2E1500);
 const Color kSubTextColor = Color(0xFF795548);
 
-// पंडित प्रोफाइल मॉडल (कॉल/चैट स्क्रीन जैसा लुक)
+// शुभ मुहूर्त / विशेष तिथि मॉडल
+class ShubhDateItem {
+  final String date;
+  final String badge;
+  final bool isRecommended;
+
+  ShubhDateItem({
+    required this.date,
+    required this.badge,
+    required this.isRecommended,
+  });
+
+  factory ShubhDateItem.fromMap(Map<String, dynamic> map) {
+    return ShubhDateItem(
+      date: map['date']?.toString() ?? '',
+      badge: map['badge']?.toString() ?? 'शुभ मुहूर्त',
+      isRecommended: map['is_recommended'] ?? true,
+    );
+  }
+}
+
+// पंडित प्रोफाइल मॉडल
 class PanditProfile {
   final String name;
   final String skills;
@@ -31,41 +55,46 @@ class VedicPujaItem {
   final String templeLocation;
   final String templeAddress;
   final String benefit;
-  final String duration;
   final String category;
+  final double baseDakshinaNumeric; // 💡 एडमिन पैनल से आया हुआ शुद्ध बेस अमाउंट
+  final double adminProfitNumeric;  // 💡 छिपा हुआ एडमिन प्रॉफिट
+  final double totalPayableNumeric; // 💡 18% GST सहित कुल राशि
   final String priceSingle;
   final String priceFamily;
   final String priceMaha;
   final String basePrice;
-  final String imageUrl;
+  final List<String> imageUrls;
   final String nextDate;
   final List<String> onlineSlots;
-  final List<PanditProfile> assignedPandits; // पंडित प्रोफाइल लिस्ट
+  final List<PanditProfile> assignedPandits;
+  final List<ShubhDateItem> recommendedDates;
 
-  const VedicPujaItem({
+  VedicPujaItem({
     required this.id,
     required this.title,
     required this.deity,
     required this.templeLocation,
     required this.templeAddress,
     required this.benefit,
-    required this.duration,
     required this.category,
+    required this.baseDakshinaNumeric,
+    required this.adminProfitNumeric,
+    required this.totalPayableNumeric,
     required this.priceSingle,
     required this.priceFamily,
     required this.priceMaha,
     required this.basePrice,
-    required this.imageUrl,
+    required this.imageUrls,
     required this.nextDate,
     required this.onlineSlots,
     required this.assignedPandits,
+    required this.recommendedDates,
   });
 
-  // Supabase Map से ऑब्जेक्ट बनाने के लिए Factory Constructor
   factory VedicPujaItem.fromMap(Map<String, dynamic> map) {
     var panditsRaw = map['assigned_pandits'];
     List<PanditProfile> parsedPandits = [];
-    
+
     if (panditsRaw != null && panditsRaw is List) {
       parsedPandits = panditsRaw.map((e) {
         return PanditProfile(
@@ -82,25 +111,194 @@ class VedicPujaItem {
       ];
     }
 
-    final priceStr = "₹${map['dakshina_amount'] ?? '1,100'}";
+    List<String> parsedSlots = const [
+      "प्रातः 07:30 AM - 09:30 AM",
+      "दोपहर 11:30 AM - 01:30 PM",
+      "संध्या 06:30 PM - 08:30 PM"
+    ];
+    if (map['available_slots'] != null && map['available_slots'] is List && (map['available_slots'] as List).isNotEmpty) {
+      parsedSlots = (map['available_slots'] as List).map((e) => e.toString()).toList();
+    }
+
+    List<ShubhDateItem> parsedDates = [];
+    if (map['recommended_dates'] != null && map['recommended_dates'] is List && (map['recommended_dates'] as List).isNotEmpty) {
+      parsedDates = (map['recommended_dates'] as List)
+          .map((e) => ShubhDateItem.fromMap(Map<String, dynamic>.from(e as Map)))
+          .toList();
+    } else {
+      parsedDates = [
+        ShubhDateItem(date: "2026-09-15", badge: "पूर्णिमा विशेष", isRecommended: true),
+        ShubhDateItem(date: "2026-09-22", badge: "सोम प्रदोष", isRecommended: true),
+        ShubhDateItem(date: "2026-10-04", badge: "नवरात्रि घटस्थापना", isRecommended: true),
+      ];
+    }
+
+    List<String> parsedImages = [];
+    if (map['image_urls'] != null && map['image_urls'] is List && (map['image_urls'] as List).isNotEmpty) {
+      parsedImages = (map['image_urls'] as List).map((e) => e.toString()).toList();
+    } else if (map['image_url'] != null && map['image_url'].toString().trim().isNotEmpty) {
+      parsedImages = [
+        map['image_url'].toString(),
+        "https://images.unsplash.com/photo-1609766857041-ed402ea8069a?w=600&auto=format&fit=crop&q=80",
+        "https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=600&auto=format&fit=crop&q=80",
+      ];
+    } else {
+      parsedImages = [
+        "https://images.unsplash.com/photo-1609766857041-ed402ea8069a?w=600&auto=format&fit=crop&q=80",
+        "https://images.unsplash.com/photo-1582510003544-4d00b7f74220?w=600&auto=format&fit=crop&q=80",
+      ];
+    }
+
+    // 💡 सटीक वित्तीय कैलकुलेशन: सीधे एडमिन पैनल की फाइनल वैल्यू लेना
+    double calculatedTotal = double.tryParse(map['total_payable_amount']?.toString() ?? '') ?? 
+        double.tryParse(map['dakshina_amount']?.toString() ?? '') ?? 12980;
+    
+    double rawBase = double.tryParse(map['base_dakshina']?.toString() ?? '') ?? (calculatedTotal / 1.18);
+    double rawProfit = double.tryParse(map['admin_profit']?.toString() ?? '1000') ?? 1000;
+
+    final priceStr = "₹${calculatedTotal.toStringAsFixed(0)}";
+
+    String resolvedTempleName = map['temples']?['name']?.toString() ?? map['temple_location']?.toString() ?? 'श्री महाकालेश्वर ज्योतिर्लिंग मंदिर';
+    String resolvedCity = map['temples']?['city']?.toString() ?? map['temple_city']?.toString() ?? 'उज्जैन';
+    String finalTempleLocation = "$resolvedTempleName, $resolvedCity";
 
     return VedicPujaItem(
       id: map['id']?.toString() ?? '',
-      title: map['title'] ?? 'वैदिक पूजा',
-      deity: map['deity'] ?? 'देवाधिदेव महादेव',
-      templeLocation: map['temples']?['name'] ?? map['temple_location'] ?? 'प्रमुख मंदिर, भारत',
-      templeAddress: map['temples']?['full_address'] ?? map['temple_address'] ?? 'प्रमुख तीर्थ स्थल परिसर',
-      benefit: map['description'] ?? 'समस्त कष्टों का निवारण एवं मनोकामना पूर्ति।',
-      duration: map['duration'] ?? '2 घंटे',
-      category: map['category'] ?? 'दोष निवारण',
+      title: map['title']?.toString() ?? 'वैदिक पूजा',
+      deity: map['deity']?.toString() ?? 'देवाधिदेव महादेव',
+      templeLocation: finalTempleLocation,
+      templeAddress: map['temples']?['full_address']?.toString() ?? map['temple_address']?.toString() ?? 'श्री महाकालेश्वर ज्योतिर्लिंग मंदिर परिसर, उज्जैन (म.प्र.) - 456006',
+      benefit: map['description']?.toString() ?? 'समस्त कष्टों का निवारण, मनोकामना पूर्ति हेतु विशेष वैदिक अनुष्ठान।',
+      category: map['category']?.toString() ?? 'दोष निवारण',
+      baseDakshinaNumeric: rawBase,
+      adminProfitNumeric: rawProfit,
+      totalPayableNumeric: calculatedTotal,
       priceSingle: priceStr,
       priceFamily: priceStr,
       priceMaha: priceStr,
       basePrice: priceStr,
-      imageUrl: map['image_url'] ?? "https://images.unsplash.com/photo-1609766857041-ed402ea8069a?w=600&auto=format&fit=crop&q=80",
-      nextDate: map['next_date'] ?? 'आगामी शुभ मुहूर्त',
-      onlineSlots: ["प्रातः 07:30 AM - 09:30 AM", "दोपहर 11:30 AM - 01:30 PM", "संध्या 06:30 PM - 08:30 PM"],
+      imageUrls: parsedImages,
+      nextDate: map['next_date']?.toString() ?? 'आगामी शुभ मुहूर्त',
+      onlineSlots: parsedSlots,
       assignedPandits: parsedPandits,
+      recommendedDates: parsedDates,
+    );
+  }
+}
+
+// 🎡 ऑटोमैटिक इमेज कैरोसेल स्लाइडर विजेट
+class AutoImageCarousel extends StatefulWidget {
+  final List<String> images;
+  final double height;
+  final BorderRadius? borderRadius;
+
+  const AutoImageCarousel({
+    super.key,
+    required this.images,
+    this.height = 150,
+    this.borderRadius,
+  });
+
+  @override
+  State<AutoImageCarousel> createState() => _AutoImageCarouselState();
+}
+
+class _AutoImageCarouselState extends State<AutoImageCarousel> {
+  late final PageController _pageController;
+  int _currentPage = 0;
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _pageController = PageController(initialPage: 0);
+
+    if (widget.images.length > 1) {
+      _timer = Timer.periodic(const Duration(milliseconds: 3500), (timer) {
+        if (_pageController.hasClients) {
+          int nextPage = _currentPage + 1;
+          if (nextPage >= widget.images.length) {
+            nextPage = 0;
+          }
+          _pageController.animateToPage(
+            nextPage,
+            duration: const Duration(milliseconds: 600),
+            curve: Curves.easeInOut,
+          );
+        }
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.images.isEmpty) {
+      return Container(
+        height: widget.height,
+        decoration: BoxDecoration(color: const Color(0xFFFFF0E6), borderRadius: widget.borderRadius),
+        child: const Center(child: Icon(Icons.temple_hindu_rounded, color: kPrimaryBhagwa, size: 48)),
+      );
+    }
+
+    return ClipRRect(
+      borderRadius: widget.borderRadius ?? BorderRadius.zero,
+      child: Stack(
+        children: [
+          SizedBox(
+            height: widget.height,
+            width: double.infinity,
+            child: PageView.builder(
+              controller: _pageController,
+              onPageChanged: (index) {
+                setState(() {
+                  _currentPage = index;
+                });
+              },
+              itemCount: widget.images.length,
+              itemBuilder: (context, index) {
+                return Image.network(
+                  widget.images[index],
+                  fit: BoxFit.cover,
+                  width: double.infinity,
+                  height: widget.height,
+                  errorBuilder: (context, error, stackTrace) => Container(
+                    color: const Color(0xFFFFF0E6),
+                    child: const Center(child: Icon(Icons.temple_hindu_rounded, color: kPrimaryBhagwa, size: 48)),
+                  ),
+                );
+              },
+            ),
+          ),
+          if (widget.images.length > 1)
+            Positioned(
+              bottom: 8,
+              left: 0,
+              right: 0,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: List.generate(
+                  widget.images.length,
+                  (index) => Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 2.5),
+                    width: _currentPage == index ? 14 : 5,
+                    height: 5,
+                    decoration: BoxDecoration(
+                      color: _currentPage == index ? kGoldAccent : Colors.white60,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
     );
   }
 }
@@ -125,13 +323,84 @@ class _PujaBookingScreenState extends State<PujaBookingScreen> {
     "शत्रु व ग्रह शांति",
   ];
 
-  // Supabase से लाइव डेटा फेच करने के लिए Future
   late Future<List<VedicPujaItem>> _pujasFuture;
 
   @override
   void initState() {
     super.initState();
     _pujasFuture = _fetchPujasFromSupabase();
+  }
+
+  void _openRazorpayWebCheckout({
+    required Map<String, dynamic> bookingPayload,
+    required VedicPujaItem puja,
+    required String currentPrice,
+    required String yajmanName,
+    required String gotra,
+    required String slotOrAddress,
+    required String sankalp,
+    required double numericDakshina,
+    required String phone,
+  }) {
+    if (!kIsWeb) return;
+
+    final options = js.JsObject.jsify({
+      'key': 'rzp_test_TWmOm1Jf5m551b',
+      'amount': (numericDakshina * 100).toInt(),
+      'name': 'वैदिक पूजा संकल्प',
+      'description': puja.title,
+      'prefill': {
+        'contact': phone,
+        'email': 'devotee@astrosolution.com',
+      },
+      'theme': {
+        'color': '#FF6F00',
+      },
+      'handler': js.allowInterop((response) async {
+        final paymentId = response['razorpay_payment_id'] ?? 'PAY_TEST_${DateTime.now().millisecondsSinceEpoch}';
+        debugPrint("✅ Razorpay Payment ID: $paymentId");
+
+        try {
+          final payload = Map<String, dynamic>.from(bookingPayload);
+          payload['sankalp_details'] = "${payload['sankalp_details']} | PaymentID: $paymentId";
+          payload['status'] = 'Paid';
+
+          await Supabase.instance.client.from('pooja_bookings').insert(payload);
+          debugPrint("✅ Booking Saved to Supabase successfully as Paid!");
+
+          if (mounted) {
+            _showPujaSuccessDialog(
+              puja: puja,
+              price: currentPrice,
+              name: yajmanName,
+              gotra: gotra,
+              slotOrAddress: slotOrAddress,
+              sankalp: sankalp,
+            );
+          }
+        } catch (e) {
+          debugPrint("🔴 Insert error after payment: $e");
+        }
+      }),
+      'modal': {
+        'ondismiss': js.allowInterop(() {
+          debugPrint("Payment dismissed by user");
+        })
+      }
+    });
+
+    try {
+      final rzp = js.JsObject(js.context['Razorpay'], [options]);
+      rzp.callMethod('open');
+    } catch (e) {
+      debugPrint("Razorpay Web Open Error: $e");
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Razorpay लोड नहीं हो सका: $e"),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   Future<List<VedicPujaItem>> _fetchPujasFromSupabase() async {
@@ -141,8 +410,8 @@ class _PujaBookingScreenState extends State<PujaBookingScreen> {
           .select('*, temples(name, full_address, city)')
           .order('created_at');
 
-      if ((response as List).isNotEmpty) {
-        return (response as List).map((item) => VedicPujaItem.fromMap(item)).toList();
+      if (response.isNotEmpty) {
+        return response.map((item) => VedicPujaItem.fromMap(item)).toList();
       }
     } catch (e) {
       debugPrint("Supabase fetch error: $e");
@@ -150,27 +419,38 @@ class _PujaBookingScreenState extends State<PujaBookingScreen> {
     return _fallbackPujasList;
   }
 
-  // पुराना डमी डेटा (फॉलबैक सुरक्षा के लिए)
   static final List<VedicPujaItem> _fallbackPujasList = [
     VedicPujaItem(
       id: "pj_1",
       title: "श्री महाकाल रुद्राभिषेक एवं भस्म आरती महापूजा",
       deity: "देवाधिदेव महादेव (महाकाल)",
-      templeLocation: "उज्जैन धाम, मध्य प्रदेश",
+      templeLocation: "श्री महाकालेश्वर ज्योतिर्लिंग, उज्जैन (म.प्र.)",
       templeAddress: "श्री महाकालेश्वर ज्योतिर्लिंग मंदिर परिसर, उज्जैन (म.प्र.) - 456006",
-      benefit: "समस्त पापों, अकाल मृत्यु भय व कालसर्प दोष से मुक्ति।",
-      duration: "2 घंटे 30 मिनट",
+      benefit: "समस्त पापों, अकाल मृत्यु भय व कालसर्प दोष से मुक्ति। सुख, शांति व आरोग्य की प्राप्ति।",
       category: "दोष निवारण",
-      priceSingle: "₹1,100",
-      priceFamily: "₹1,100",
-      priceMaha: "₹1,100",
-      basePrice: "₹1,100",
-      imageUrl: "https://images.unsplash.com/photo-1609766857041-ed402ea8069a?w=600&auto=format&fit=crop&q=80",
-      nextDate: "आगामी सोमवार (सोम प्रदोष)",
-      onlineSlots: ["प्रातः 07:30 AM - 09:30 AM", "दोपहर 11:30 AM - 01:30 PM", "संध्या 06:30 PM - 08:30 PM"],
+      baseDakshinaNumeric: 10000,
+      adminProfitNumeric: 1000,
+      totalPayableNumeric: 12980,
+      priceSingle: "₹12,980",
+      priceFamily: "₹12,980",
+      priceMaha: "₹12,980",
+      basePrice: "₹12,980",
+      imageUrls: [
+        "https://images.unsplash.com/photo-1609766857041-ed402ea8069a?w=600&auto=format&fit=crop&q=80",
+        "https://images.unsplash.com/photo-1582510003544-4d00b7f74220?w=600&auto=format&fit=crop&q=80",
+      ],
+      nextDate: "आगामी सोमवार",
+      onlineSlots: const [
+        "प्रातः 07:30 AM - 09:30 AM",
+        "दोपहर 11:30 AM - 01:30 PM",
+        "संध्या 06:30 PM - 08:30 PM"
+      ],
       assignedPandits: [
         PanditProfile(name: 'पं. राधेश्याम शास्त्री', skills: 'मुख्य आचार्य, महाकाल विशेषज्ञ', rating: '5.0 ⭐', imageUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200'),
-        PanditProfile(name: 'आचार्य सुरेश शास्त्री', skills: 'काशी विद्वान, रुद्राभिषेक', rating: '4.8 ⭐', imageUrl: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=200'),
+      ],
+      recommendedDates: [
+        ShubhDateItem(date: "2026-09-15", badge: "पूर्णिमा विशेष", isRecommended: true),
+        ShubhDateItem(date: "2026-09-22", badge: "सोम प्रदोष", isRecommended: true),
       ],
     ),
   ];
@@ -181,20 +461,115 @@ class _PujaBookingScreenState extends State<PujaBookingScreen> {
     super.dispose();
   }
 
+  void _openPujaDetailsSheet(VedicPujaItem puja) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return Container(
+          height: MediaQuery.of(context).size.height * 0.85,
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+          ),
+          child: Column(
+            children: [
+              Container(
+                margin: const EdgeInsets.only(top: 12, bottom: 8),
+                width: 44,
+                height: 5,
+                decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(10)),
+              ),
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      AutoImageCarousel(
+                        images: puja.imageUrls,
+                        height: 190,
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      const SizedBox(height: 14),
+                      Text(
+                        puja.title,
+                        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: kTextColor),
+                      ),
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          const Icon(Icons.location_on_rounded, color: kPrimaryBhagwa, size: 16),
+                          const SizedBox(width: 4),
+                          Expanded(
+                            child: Text(
+                              puja.templeLocation,
+                              style: const TextStyle(fontSize: 12, color: kPrimaryBhagwa, fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const Divider(height: 24),
+                      const Text(
+                        "🪔 पूजा का महात्म्य एवं फल (Significance & Benefits):",
+                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: kTextColor),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        puja.benefit,
+                        style: const TextStyle(fontSize: 12, color: kSubTextColor, height: 1.5),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10, offset: const Offset(0, -4))],
+                ),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: () {
+                      Navigator.pop(context);
+                      _openBookingModal(puja);
+                    },
+                    icon: const Icon(Icons.event_available_rounded, size: 20),
+                    label: const Text("शुभ मुहूर्त देखकर बुक करें (Book Pooja)", style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: kPrimaryBhagwa,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  // 2. मुख्य बुकिंग बॉटम शीट (सटीक प्राइस कैलकुलेशन फिक्स)
   void _openBookingModal(VedicPujaItem puja) {
-    String pujaMode = "online"; // 'online' or 'offline'
-    String selectedPackageType = "परिवार संकल्प"; // 'एकल संकल्प', 'परिवार संकल्प', 'महा अनुष्ठान'
+    String selectedPackageType = "परिवार संकल्प";
+    String selectedMonth = "सितंबर 2026";
+    String selectedDate = puja.recommendedDates.isNotEmpty ? puja.recommendedDates.first.date : "2026-09-15";
     String selectedSlot = puja.onlineSlots.first;
-    // डिफ़ॉल्ट रूप से पहला उपलब्ध पंडित चुनें
-    PanditProfile selectedPandit = puja.assignedPandits.isNotEmpty 
-        ? puja.assignedPandits.first 
-        : PanditProfile(name: 'मुख्य आचार्य', skills: 'वैदिक पंडित', rating: '5.0 ⭐', imageUrl: '');
-    
-    final TextEditingController nameController = TextEditingController(text: "यजमान");
-    final TextEditingController gotraController = TextEditingController(text: "कश्यप");
-    final TextEditingController addressController = TextEditingController();
-    final TextEditingController phoneController = TextEditingController(text: "9876543210");
-    final TextEditingController sankalpWishController = TextEditingController(text: "समस्त पारिवारिक सुख, समृद्धि एवं कार्य सिद्धि");
+
+    final GlobalKey<FormState> formKey = GlobalKey<FormState>();
+    final TextEditingController nameController = TextEditingController();
+    final TextEditingController gotraController = TextEditingController();
+    final TextEditingController phoneController = TextEditingController();
+    final TextEditingController altPhoneController = TextEditingController();
+    final TextEditingController sankalpWishController = TextEditingController();
+
+    final List<String> monthsList = ["सितंबर 2026", "अक्टूबर 2026", "नवंबर 2026", "दिसंबर 2026"];
 
     showModalBottomSheet(
       context: context,
@@ -203,10 +578,18 @@ class _PujaBookingScreenState extends State<PujaBookingScreen> {
       builder: (modalContext) {
         return StatefulBuilder(
           builder: (context, setModalState) {
-            final currentPrice = puja.basePrice;
+            
+            // 💡 फिक्स: सीधे एडमिन पैनल की अंतिम तय राशि (Final Amount) का उपयोग
+            double finalPayableAmount = puja.totalPayableNumeric;
+            double baseAmountWithoutGst = (finalPayableAmount / 1.18);
+            double gstAmount = finalPayableAmount - baseAmountWithoutGst;
+
+            final currentPriceStr = "₹${finalPayableAmount.toStringAsFixed(0)}";
+
+            const Color kPrimaryBhagwa = Color(0xFFFF6F00);
 
             return Container(
-              height: MediaQuery.of(context).size.height * 0.90,
+              height: MediaQuery.of(context).size.height * 0.92,
               decoration: const BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
@@ -224,16 +607,12 @@ class _PujaBookingScreenState extends State<PujaBookingScreen> {
                   ),
                   const SizedBox(height: 12),
 
-                  // Header with Puja Title
                   Row(
                     children: [
                       Container(
                         padding: const EdgeInsets.all(8),
-                        decoration: const BoxDecoration(
-                          color: Color(0xFFFFF0E6),
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(Icons.local_fire_department_rounded, color: kDeepSaffron, size: 24),
+                        decoration: const BoxDecoration(color: Color(0xFFFFF0E6), shape: BoxShape.circle),
+                        child: const Icon(Icons.temple_hindu_rounded, color: kDeepSaffron, size: 24),
                       ),
                       const SizedBox(width: 10),
                       Expanded(
@@ -247,7 +626,7 @@ class _PujaBookingScreenState extends State<PujaBookingScreen> {
                               style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: kTextColor),
                             ),
                             Text(
-                              "${puja.templeLocation} • ${puja.duration}",
+                              "${puja.templeLocation} • 100% प्रत्यक्ष मंदिर पूजा",
                               style: const TextStyle(fontSize: 11, color: kPrimaryBhagwa, fontWeight: FontWeight.bold),
                             ),
                           ],
@@ -264,224 +643,12 @@ class _PujaBookingScreenState extends State<PujaBookingScreen> {
                   Expanded(
                     child: SingleChildScrollView(
                       physics: const ClampingScrollPhysics(),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // 1. ONLINE VS OFFLINE TOGGLE SWITCH
-                          const Text(
-                            "पूजा का प्रकार चुनें (Select Mode):",
-                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: kTextColor),
-                          ),
-                          const SizedBox(height: 8),
-
-                          Row(
-                            children: [
-                              Expanded(
-                                child: GestureDetector(
-                                  onTap: () => setModalState(() => pujaMode = "online"),
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
-                                    decoration: BoxDecoration(
-                                      color: pujaMode == "online" ? const Color(0xFFFFF7F0) : Colors.white,
-                                      borderRadius: BorderRadius.circular(14),
-                                      border: Border.all(
-                                        color: pujaMode == "online" ? kPrimaryBhagwa : Colors.orange.shade100,
-                                        width: pujaMode == "online" ? 2 : 1,
-                                      ),
-                                    ),
-                                    child: Row(
-                                      children: [
-                                        Icon(Icons.videocam_rounded, color: pujaMode == "online" ? kPrimaryBhagwa : Colors.grey, size: 20),
-                                        const SizedBox(width: 6),
-                                        Expanded(
-                                          child: Column(
-                                            crossAxisAlignment: CrossAxisAlignment.start,
-                                            children: [
-                                              Text(
-                                                "ऑनलाइन लाइव पूजा 🔴",
-                                                style: TextStyle(
-                                                  fontSize: 11,
-                                                  fontWeight: FontWeight.bold,
-                                                  color: pujaMode == "online" ? kPrimaryBhagwa : kTextColor,
-                                                ),
-                                              ),
-                                              const Text("घर बैठे लाइव संकल्प + प्रसाद", style: TextStyle(fontSize: 9, color: kSubTextColor)),
-                                            ],
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: GestureDetector(
-                                  onTap: () => setModalState(() => pujaMode = "offline"),
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
-                                    decoration: BoxDecoration(
-                                      color: pujaMode == "offline" ? const Color(0xFFFFF7F0) : Colors.white,
-                                      borderRadius: BorderRadius.circular(14),
-                                      border: Border.all(
-                                        color: pujaMode == "offline" ? kPrimaryBhagwa : Colors.orange.shade100,
-                                        width: pujaMode == "offline" ? 2 : 1,
-                                      ),
-                                    ),
-                                    child: Row(
-                                      children: [
-                                        Icon(Icons.temple_hindu_rounded, color: pujaMode == "offline" ? kPrimaryBhagwa : Colors.grey, size: 20),
-                                        const SizedBox(width: 6),
-                                        Expanded(
-                                          child: Column(
-                                            crossAxisAlignment: CrossAxisAlignment.start,
-                                            children: [
-                                              Text(
-                                                "ऑफलाइन मंदिर पूजा 🛕",
-                                                style: TextStyle(
-                                                  fontSize: 11,
-                                                  fontWeight: FontWeight.bold,
-                                                  color: pujaMode == "offline" ? kPrimaryBhagwa : kTextColor,
-                                                ),
-                                              ),
-                                              const Text("मंदिर में प्रत्यक्ष उपस्थिति", style: TextStyle(fontSize: 9, color: kSubTextColor)),
-                                            ],
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-
-                          const SizedBox(height: 14),
-
-                          // 1.5 PANDIT SELECTION SECTION (कॉल/चैट स्क्रीन जैसी प्रोफाईल लिस्ट)
-                          const Text(
-                            "पूजन संपन्न करने हेतु आचार्य/पंडित चुनें (Select Pandit):",
-                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: kTextColor),
-                          ),
-                          const SizedBox(height: 8),
-                          Column(
-                            children: puja.assignedPandits.map((pandit) {
-                              final isSelected = selectedPandit.name == pandit.name;
-                              return GestureDetector(
-                                onTap: () => setModalState(() => selectedPandit = pandit),
-                                child: Container(
-                                  margin: const EdgeInsets.only(bottom: 8),
-                                  padding: const EdgeInsets.all(10),
-                                  decoration: BoxDecoration(
-                                    color: isSelected ? const Color(0xFFFFF7F0) : Colors.white,
-                                    borderRadius: BorderRadius.circular(14),
-                                    border: Border.all(
-                                      color: isSelected ? kPrimaryBhagwa : Colors.orange.shade200,
-                                      width: isSelected ? 2 : 1,
-                                    ),
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      CircleAvatar(
-                                        radius: 24,
-                                        backgroundImage: NetworkImage(pandit.imageUrl),
-                                      ),
-                                      const SizedBox(width: 12),
-                                      Expanded(
-                                        child: Column(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
-                                          children: [
-                                            Row(
-                                              children: [
-                                                Text(
-                                                  pandit.name,
-                                                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: kTextColor),
-                                                ),
-                                                const SizedBox(width: 6),
-                                                Text(
-                                                  pandit.rating,
-                                                  style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.amber),
-                                                ),
-                                              ],
-                                            ),
-                                            const SizedBox(height: 3),
-                                            Text(
-                                              pandit.skills,
-                                              style: const TextStyle(fontSize: 10, color: kSubTextColor),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                      Radio<String>(
-                                        value: pandit.name,
-                                        groupValue: selectedPandit.name,
-                                        activeColor: kPrimaryBhagwa,
-                                        onChanged: (val) => setModalState(() => selectedPandit = pandit),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              );
-                            }).toList(),
-                          ),
-
-                          const SizedBox(height: 14),
-
-                          // 2. DYNAMIC MODE DETAILS
-                          if (pujaMode == "online") ...[
-                            Container(
-                              padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFFFF9F4),
-                                borderRadius: BorderRadius.circular(14),
-                                border: Border.all(color: Colors.orange.shade200),
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    children: const [
-                                      Icon(Icons.access_time_filled_rounded, color: kPrimaryBhagwa, size: 16),
-                                      SizedBox(width: 6),
-                                      Text("लाइव संकल्प का समय स्लॉट चुनें:", style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: kTextColor)),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 8),
-                                  Wrap(
-                                    spacing: 8,
-                                    runSpacing: 8,
-                                    children: puja.onlineSlots.map((slot) {
-                                      final isSlotSelected = selectedSlot == slot;
-                                      return GestureDetector(
-                                        onTap: () => setModalState(() => selectedSlot = slot),
-                                        child: Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                          decoration: BoxDecoration(
-                                            color: isSlotSelected ? kPrimaryBhagwa : Colors.white,
-                                            borderRadius: BorderRadius.circular(10),
-                                            border: Border.all(color: isSlotSelected ? kPrimaryBhagwa : Colors.orange.shade200),
-                                          ),
-                                          child: Text(
-                                            slot,
-                                            style: TextStyle(
-                                              fontSize: 10,
-                                              fontWeight: isSlotSelected ? FontWeight.bold : FontWeight.w600,
-                                              color: isSlotSelected ? Colors.white : kTextColor,
-                                            ),
-                                          ),
-                                        ),
-                                      );
-                                    }).toList(),
-                                  ),
-                                  const SizedBox(height: 8),
-                                  const Text(
-                                    "✨ चयनित पुरोहित जी लाइव वीडियो पर आपका नाम व गोत्र उच्चारित कर संकल्प करवाएंगे। पूजा उपरांत अभिमंत्रित भस्म, रक्षासूत्र व प्रसाद आपके पते पर भेजा जाएगा।",
-                                    style: TextStyle(fontSize: 10, color: kSubTextColor, height: 1.3),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ] else ...[
+                      child: Form(
+                        key: formKey,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // Mandir Venue Card
                             Container(
                               padding: const EdgeInsets.all(12),
                               decoration: BoxDecoration(
@@ -497,7 +664,7 @@ class _PujaBookingScreenState extends State<PujaBookingScreen> {
                                       Icon(Icons.location_on_rounded, color: Colors.green.shade800, size: 18),
                                       const SizedBox(width: 6),
                                       Text(
-                                        "मंदिर / तीर्थ स्थल का पूरा पता:",
+                                        "पूजन स्थल (Mandir Venue Address):",
                                         style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.green.shade900),
                                       ),
                                     ],
@@ -507,155 +674,244 @@ class _PujaBookingScreenState extends State<PujaBookingScreen> {
                                     puja.templeAddress,
                                     style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: kTextColor, height: 1.35),
                                   ),
-                                  const SizedBox(height: 6),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8)),
-                                    child: Text(
-                                      "📍 रिपोर्टिंग समय: पूजा से 30 मिनट पूर्व • चयनित आचार्य जी का संपर्क नंबर पास में मिलेगा।",
-                                      style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Colors.green.shade800),
+                                ],
+                              ),
+                            ),
+
+                            const SizedBox(height: 14),
+
+                            // Month Selector
+                            const Text("महीना चुनें (Select Month):", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: kTextColor)),
+                            const SizedBox(height: 8),
+                            SizedBox(
+                              height: 34,
+                              child: ListView.builder(
+                                scrollDirection: Axis.horizontal,
+                                itemCount: monthsList.length,
+                                itemBuilder: (context, index) {
+                                  final month = monthsList[index];
+                                  final isMonthSelected = selectedMonth == month;
+                                  return GestureDetector(
+                                    onTap: () => setModalState(() => selectedMonth = month),
+                                    child: Container(
+                                      margin: const EdgeInsets.only(right: 8),
+                                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                                      decoration: BoxDecoration(
+                                        color: isMonthSelected ? kPrimaryBhagwa : const Color(0xFFFFF9F4),
+                                        borderRadius: BorderRadius.circular(18),
+                                        border: Border.all(color: isMonthSelected ? kPrimaryBhagwa : Colors.orange.shade200),
+                                      ),
+                                      child: Text(
+                                        month,
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: isMonthSelected ? FontWeight.bold : FontWeight.w600,
+                                          color: isMonthSelected ? Colors.white : kTextColor,
+                                        ),
+                                      ),
                                     ),
+                                  );
+                                },
+                              ),
+                            ),
+
+                            const SizedBox(height: 14),
+
+                            // Shubh Dates Selector
+                            Row(
+                              children: const [
+                                Icon(Icons.stars_rounded, color: kPrimaryBhagwa, size: 16),
+                                SizedBox(width: 4),
+                                Text("शुभ मुहूर्त एवं विशेष तिथियां (Select Shubh Date):", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: kTextColor)),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            SizedBox(
+                              height: 58,
+                              child: ListView.builder(
+                                scrollDirection: Axis.horizontal,
+                                itemCount: puja.recommendedDates.length,
+                                itemBuilder: (context, index) {
+                                  final item = puja.recommendedDates[index];
+                                  final isDateSelected = selectedDate == item.date;
+                                  return GestureDetector(
+                                    onTap: () => setModalState(() => selectedDate = item.date),
+                                    child: Container(
+                                      margin: const EdgeInsets.only(right: 8),
+                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                      decoration: BoxDecoration(
+                                        color: isDateSelected ? const Color(0xFFFFF7F0) : Colors.white,
+                                        borderRadius: BorderRadius.circular(12),
+                                        border: Border.all(
+                                          color: isDateSelected ? kPrimaryBhagwa : Colors.orange.shade100,
+                                          width: isDateSelected ? 2 : 1,
+                                        ),
+                                      ),
+                                      child: Column(
+                                        mainAxisAlignment: MainAxisAlignment.center,
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                            decoration: BoxDecoration(color: Colors.green.shade700, borderRadius: BorderRadius.circular(4)),
+                                            child: Text(item.badge, style: const TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.bold)),
+                                          ),
+                                          const SizedBox(height: 3),
+                                          Text(item.date, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: kTextColor)),
+                                        ],
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
+
+                            const SizedBox(height: 14),
+
+                            // Package Options
+                            const Text("संकल्प प्रकार चुनें (Select Package):", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: kTextColor)),
+                            const SizedBox(height: 8),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: _buildPackageOption(
+                                    title: "एकल संकल्प",
+                                    price: currentPriceStr,
+                                    desc: "1 व्यक्ति का नाम",
+                                    isSelected: selectedPackageType == "एकल संकल्प",
+                                    onTap: () => setModalState(() => selectedPackageType = "एकल संकल्प"),
+                                  ),
+                                ),
+                                const SizedBox(width: 6),
+                                Expanded(
+                                  child: _buildPackageOption(
+                                    title: "परिवार संकल्प",
+                                    price: currentPriceStr,
+                                    desc: "पूरे परिवार के नाम",
+                                    isSelected: selectedPackageType == "परिवार संकल्प",
+                                    onTap: () => setModalState(() => selectedPackageType = "परिवार संकल्प"),
+                                    isPopular: true,
+                                  ),
+                                ),
+                                const SizedBox(width: 6),
+                                Expanded(
+                                  child: _buildPackageOption(
+                                    title: "महा अनुष्ठान",
+                                    price: currentPriceStr,
+                                    desc: "विशेष व्यक्तिगत हवन",
+                                    isSelected: selectedPackageType == "महा अनुष्ठान",
+                                    onTap: () => setModalState(() => selectedPackageType = "महा अनुष्ठान"),
+                                  ),
+                                ),
+                              ],
+                            ),
+
+                            const SizedBox(height: 14),
+
+                            // 💰 Price & Tax Breakdown Card
+                            Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: Colors.amber.shade50,
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: Colors.amber.shade200),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text("💰 दक्षिणा एवं कर विवरण (Price & Tax Breakdown):", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Colors.brown)),
+                                  const Divider(height: 12),
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      const Text("पूजा बेस मूल्य (सेवा शुल्क सहित):", style: TextStyle(fontSize: 11)),
+                                      Text("₹${baseAmountWithoutGst.toStringAsFixed(0)}", style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      const Text("18% GST (समाहित कर):", style: TextStyle(fontSize: 11, color: Colors.grey)),
+                                      Text("₹${gstAmount.toStringAsFixed(0)}", style: const TextStyle(fontSize: 11, color: Colors.grey, fontWeight: FontWeight.bold)),
+                                    ],
+                                  ),
+                                  const Padding(padding: EdgeInsets.symmetric(vertical: 4.0), child: Divider(height: 1)),
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      const Text("कुल देय राशि (Total Payable):", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.deepOrange)),
+                                      Text("₹${finalPayableAmount.toStringAsFixed(0)}", style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: Colors.deepOrange)),
+                                    ],
                                   ),
                                 ],
                               ),
                             ),
-                          ],
 
-                          const SizedBox(height: 14),
+                            const SizedBox(height: 14),
 
-                          // 3. PACKAGE / DAKSHINA SELECTION
-                          const Text(
-                            "संकल्प प्रकार चुनें (Select Package):",
-                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: kTextColor),
-                          ),
-                          const SizedBox(height: 8),
+                            // Sankalp Form Fields
+                            const Text("यजमान एवं संकल्प विवरण:", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: kTextColor)),
+                            const SizedBox(height: 8),
 
-                          Row(
-                            children: [
-                              Expanded(
-                                child: _buildPackageOption(
-                                  title: "एकल संकल्प",
-                                  price: puja.basePrice,
-                                  desc: "1 व्यक्ति का नाम",
-                                  isSelected: selectedPackageType == "एकल संकल्प",
-                                  onTap: () => setModalState(() => selectedPackageType = "एकल संकल्प"),
-                                ),
-                              ),
-                              const SizedBox(width: 6),
-                              Expanded(
-                                child: _buildPackageOption(
-                                  title: "परिवार संकल्प",
-                                  price: puja.basePrice,
-                                  desc: "पूरे परिवार के नाम",
-                                  isSelected: selectedPackageType == "परिवार संकल्प",
-                                  onTap: () => setModalState(() => selectedPackageType = "परिवार संकल्प"),
-                                  isPopular: true,
-                                ),
-                              ),
-                              const SizedBox(width: 6),
-                              Expanded(
-                                child: _buildPackageOption(
-                                  title: "महा अनुष्ठान",
-                                  price: puja.basePrice,
-                                  desc: "विशेष व्यक्तिगत हवन",
-                                  isSelected: selectedPackageType == "महा अनुष्ठान",
-                                  onTap: () => setModalState(() => selectedPackageType = "महा अनुष्ठान"),
-                                ),
-                              ),
-                            ],
-                          ),
-
-                          const SizedBox(height: 14),
-
-                          // 4. DEVOTEE DETAILS INPUTS
-                          const Text(
-                            "यजमान एवं संकल्प विवरण:",
-                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: kTextColor),
-                          ),
-                          const SizedBox(height: 8),
-
-                          Row(
-                            children: [
-                              Expanded(
-                                child: TextField(
-                                  controller: nameController,
-                                  style: const TextStyle(fontSize: 12, color: kTextColor),
-                                  decoration: InputDecoration(
-                                    labelText: "यजमान का नाम",
-                                    labelStyle: const TextStyle(fontSize: 11, color: kSubTextColor),
-                                    prefixIcon: const Icon(Icons.person_outline_rounded, color: kPrimaryBhagwa, size: 18),
-                                    filled: true,
-                                    fillColor: const Color(0xFFFFFDF9),
-                                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFFFE0B2))),
-                                    enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFFFE0B2))),
-                                    contentPadding: const EdgeInsets.all(10),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: TextFormField(
+                                    controller: nameController,
+                                    validator: (val) => (val == null || val.trim().isEmpty) ? 'नाम दर्ज करें' : null,
+                                    style: const TextStyle(fontSize: 12, color: kTextColor),
+                                    decoration: _buildInputDecoration("यजमान का पूरा नाम *", Icons.person_outline_rounded),
                                   ),
                                 ),
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: TextField(
-                                  controller: gotraController,
-                                  style: const TextStyle(fontSize: 12, color: kTextColor),
-                                  decoration: InputDecoration(
-                                    labelText: "गोत्र (वैकल्पिक)",
-                                    labelStyle: const TextStyle(fontSize: 11, color: kSubTextColor),
-                                    prefixIcon: const Icon(Icons.temple_hindu_rounded, color: kPrimaryBhagwa, size: 18),
-                                    filled: true,
-                                    fillColor: const Color(0xFFFFFDF9),
-                                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFFFE0B2))),
-                                    enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFFFE0B2))),
-                                    contentPadding: const EdgeInsets.all(10),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: TextFormField(
+                                    controller: gotraController,
+                                    validator: (val) => (val == null || val.trim().isEmpty) ? 'गोत्र दर्ज करें' : null,
+                                    style: const TextStyle(fontSize: 12, color: kTextColor),
+                                    decoration: _buildInputDecoration("गोत्र *", Icons.temple_hindu_rounded),
                                   ),
                                 ),
-                              ),
-                            ],
-                          ),
-
-                          const SizedBox(height: 10),
-
-                          TextField(
-                            controller: phoneController,
-                            keyboardType: TextInputType.phone,
-                            style: const TextStyle(fontSize: 12, color: kTextColor),
-                            decoration: InputDecoration(
-                              labelText: "मोबाइल नंबर",
-                              labelStyle: const TextStyle(fontSize: 11, color: kSubTextColor),
-                              prefixIcon: const Icon(Icons.phone_outlined, color: kPrimaryBhagwa, size: 18),
-                              filled: true,
-                              fillColor: const Color(0xFFFFFDF9),
-                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFFFE0B2))),
-                              enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFFFE0B2))),
-                              contentPadding: const EdgeInsets.all(10),
+                              ],
                             ),
-                          ),
 
-                          const SizedBox(height: 10),
-
-                          TextField(
-                            controller: sankalpWishController,
-                            style: const TextStyle(fontSize: 12, color: kTextColor),
-                            decoration: InputDecoration(
-                              labelText: "विशेष मनोकामना / संकल्प उद्देश्य",
-                              labelStyle: const TextStyle(fontSize: 11, color: kSubTextColor),
-                              prefixIcon: const Icon(Icons.stars_rounded, color: kPrimaryBhagwa, size: 18),
-                              filled: true,
-                              fillColor: const Color(0xFFFFFDF9),
-                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFFFE0B2))),
-                              enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFFFE0B2))),
-                              contentPadding: const EdgeInsets.all(10),
-                            ),
-                          ),
-
-                          if (pujaMode == "online") ...[
                             const SizedBox(height: 10),
-                            TextField(
-                              controller: addressController,
+
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: TextFormField(
+                                    controller: phoneController,
+                                    keyboardType: TextInputType.phone,
+                                    validator: (val) => (val == null || val.trim().length != 10) ? '10-अंकीय नंबर डालें' : null,
+                                    style: const TextStyle(fontSize: 12, color: kTextColor),
+                                    decoration: _buildInputDecoration("मोबाइल नंबर (+91) *", Icons.phone_outlined),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: TextFormField(
+                                    controller: altPhoneController,
+                                    keyboardType: TextInputType.phone,
+                                    style: const TextStyle(fontSize: 12, color: kTextColor),
+                                    decoration: _buildInputDecoration("वैकल्पिक नंबर", Icons.phone_forwarded_outlined),
+                                  ),
+                                ),
+                              ],
+                            ),
+
+                            const SizedBox(height: 10),
+
+                            TextFormField(
+                              controller: sankalpWishController,
+                              maxLines: 3,
+                              validator: (val) => (val == null || val.trim().isEmpty) ? 'मनोकामना दर्ज करें' : null,
                               style: const TextStyle(fontSize: 12, color: kTextColor),
                               decoration: InputDecoration(
-                                labelText: "प्रसाद डिलीवरी का पूरा पता (मकान, शहर, पिनकोड)",
+                                labelText: "विशेष मनोकामना / संकल्प उद्देश्य *",
                                 labelStyle: const TextStyle(fontSize: 11, color: kSubTextColor),
-                                prefixIcon: const Icon(Icons.home_rounded, color: kPrimaryBhagwa, size: 18),
+                                prefixIcon: const Icon(Icons.stars_rounded, color: kPrimaryBhagwa, size: 18),
                                 filled: true,
                                 fillColor: const Color(0xFFFFFDF9),
                                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFFFE0B2))),
@@ -664,58 +920,60 @@ class _PujaBookingScreenState extends State<PujaBookingScreen> {
                               ),
                             ),
                           ],
-                        ],
+                        ),
                       ),
                     ),
                   ),
 
                   const SizedBox(height: 10),
 
-                  // Confirmation Button
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton.icon(
-                      onPressed: () async {
-                        final yajmanName = nameController.text.trim().isEmpty ? "यजमान" : nameController.text.trim();
-                        final gotra = gotraController.text.trim().isEmpty ? "कश्यप" : gotraController.text.trim();
-                        final phone = phoneController.text.trim().isEmpty ? "9876543210" : phoneController.text.trim();
-                        final sankalp = sankalpWishController.text.trim();
-                        final numericDakshina = double.tryParse(currentPrice.replaceAll(RegExp(r'[^0-9]'), '')) ?? 1100.0;
+                      onPressed: () {
+                        if (!formKey.currentState!.validate()) return;
 
-                        // Insert to Supabase matching your database columns (`puja_title`, `temple_location`, `dakshina`, `puja_date`, `yajman_name`)
-                        try {
-                          final user = Supabase.instance.client.auth.currentUser;
-                          await Supabase.instance.client.from('pooja_bookings').insert({
-                            if (user != null) 'user_id': user.id,
-                            'puja_title': puja.title,
-                            'temple_location': puja.templeLocation,
-                            'dakshina': numericDakshina,
-                            'puja_date': puja.nextDate,
-                            'yajman_name': yajmanName,
-                            'user_phone': phone,
-                            'mode': pujaMode == "online" ? "Online" : "Offline",
-                            'sankalp_details': "गोत्र: $gotra | आचार्य: ${selectedPandit.name} | संकल्प: $sankalp",
-                            'status': 'Confirmed',
-                          });
-                        } catch (e) {
-                          debugPrint("Insert error: $e");
-                        }
+                        final yajmanName = nameController.text.trim();
+                        final gotra = gotraController.text.trim();
+                        final phone = phoneController.text.trim();
+                        final altPhone = altPhoneController.text.trim();
+                        final sankalp = sankalpWishController.text.trim();
+
+                        final timeInfo = "दिनांक: $selectedDate | समय: $selectedSlot | स्थान: मंदिर प्रत्यक्ष";
+                        final finalDetails = "गोत्र: $gotra | वैकल्पिक: ${altPhone.isEmpty ? 'N/A' : altPhone} | $timeInfo | पैकेज: $selectedPackageType | संकल्प: $sankalp";
+
+                        final user = Supabase.instance.client.auth.currentUser;
+
+                        final payload = {
+                          if (user != null) 'user_id': user.id,
+                          'user_name': yajmanName,
+                          'user_phone': phone,
+                          'pooja_id': puja.id,
+                          'puja_title': puja.title,
+                          'booking_amount': finalPayableAmount,
+                          'admin_profit': puja.adminProfitNumeric,
+                          'mode': 'Offline',
+                          'sankalp_details': finalDetails,
+                          'status': 'Confirmed',
+                        };
 
                         Navigator.pop(modalContext);
-                        _showPujaSuccessDialog(
+
+                        _openRazorpayWebCheckout(
+                          bookingPayload: payload,
                           puja: puja,
-                          mode: pujaMode,
-                          price: currentPrice,
-                          name: yajmanName,
+                          currentPrice: currentPriceStr,
+                          yajmanName: yajmanName,
                           gotra: gotra,
-                          slotOrAddress: pujaMode == "online" ? selectedSlot : puja.templeAddress,
+                          slotOrAddress: "$selectedDate ($selectedSlot)",
                           sankalp: sankalp,
-                          panditName: selectedPandit.name,
+                          numericDakshina: finalPayableAmount,
+                          phone: phone,
                         );
                       },
-                      icon: const Icon(Icons.check_circle_rounded, size: 18),
+                      icon: const Icon(Icons.payment_rounded, size: 18),
                       label: Text(
-                        "$currentPrice में ${pujaMode == 'online' ? 'ऑनलाइन' : 'मंदिर'} पूजा बुक करें 🚩",
+                        "₹${finalPayableAmount.toStringAsFixed(0)} में निहित पूजा बुक करें 🚩",
                         style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
                       ),
                       style: ElevatedButton.styleFrom(
@@ -732,6 +990,19 @@ class _PujaBookingScreenState extends State<PujaBookingScreen> {
           },
         );
       },
+    );
+  }
+
+  InputDecoration _buildInputDecoration(String label, IconData icon) {
+    return InputDecoration(
+      labelText: label,
+      labelStyle: const TextStyle(fontSize: 11, color: kSubTextColor),
+      prefixIcon: Icon(icon, color: kPrimaryBhagwa, size: 18),
+      filled: true,
+      fillColor: const Color(0xFFFFFDF9),
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFFFE0B2))),
+      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFFFE0B2))),
+      contentPadding: const EdgeInsets.all(10),
     );
   }
 
@@ -777,16 +1048,12 @@ class _PujaBookingScreenState extends State<PujaBookingScreen> {
 
   void _showPujaSuccessDialog({
     required VedicPujaItem puja,
-    required String mode,
     required String price,
     required String name,
     required String gotra,
     required String slotOrAddress,
     required String sankalp,
-    required String panditName,
   }) {
-    final isOnline = mode == "online";
-
     showDialog(
       context: context,
       builder: (context) {
@@ -808,10 +1075,10 @@ class _PujaBookingScreenState extends State<PujaBookingScreen> {
                 child: const Icon(Icons.verified_rounded, color: Colors.green, size: 34),
               ),
               const SizedBox(height: 10),
-              Text(
-                isOnline ? "ऑनलाइन पूजा संकल्प बुक हुआ! 🚩" : "मंदिर पूजा बुकिंग कन्फर्म! 🛕",
+              const Text(
+                "मंदिर पूजा बुकिंग कन्फर्म! 🛕",
                 textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: kTextColor),
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: kTextColor),
               ),
               const SizedBox(height: 4),
               Text(
@@ -833,57 +1100,22 @@ class _PujaBookingScreenState extends State<PujaBookingScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Center(
+                    const Center(
                       child: Text(
-                        isOnline ? "📜 ई-संकल्प रसीद (Live Puja Pass)" : "🛕 मंदिर दर्शन व पूजा पास",
-                        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: kPrimaryBhagwa),
+                        "🛕 मंदिर दर्शन व पूजन पास",
+                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: kPrimaryBhagwa),
                       ),
                     ),
                     const Divider(height: 12),
                     _buildReceiptRow("यजमान:", name),
                     _buildReceiptRow("गोत्र:", gotra),
-                    _buildReceiptRow("चयनित आचार्य:", panditName),
-                    _buildReceiptRow("पूजा माध्यम:", isOnline ? "ऑनलाइन लाइव वीडियो" : "मंदिर में प्रत्यक्ष"),
-                    _buildReceiptRow(
-                      isOnline ? "लाइव स्लॉट समय:" : "मंदिर का पता:",
-                      slotOrAddress,
-                    ),
-                    _buildReceiptRow("दक्षिणा राशि:", price),
+                    _buildReceiptRow("मंदिर / तीर्थ स्थल:", puja.templeLocation),
+                    _buildReceiptRow("मुहूर्त एवं समय:", slotOrAddress),
+                    _buildReceiptRow("कुल भुगतान राशि:", price),
                     _buildReceiptRow("बुकिंग ID:", "PUJA_${DateTime.now().millisecondsSinceEpoch.toString().substring(6)}"),
                   ],
                 ),
               ),
-
-              // यदि ऑनलाइन पूजा है तो "Go Live & Start Puja" बटन दिखाएं
-              if (isOnline) ...[
-                const SizedBox(height: 12),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    onPressed: () {
-                      Navigator.pop(context); // डायलॉग बंद करें
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => LivePujaVideoCallScreen(
-                            pujaTitle: puja.title,
-                            panditName: panditName,
-                            slotTime: slotOrAddress,
-                          ),
-                        ),
-                      );
-                    },
-                    icon: const Icon(Icons.video_call_rounded, size: 20),
-                    label: const Text("🎥 Go Live & Start Puja", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.green.shade700,
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                    ),
-                  ),
-                ),
-              ],
 
               const SizedBox(height: 14),
               SizedBox(
@@ -945,7 +1177,6 @@ class _PujaBookingScreenState extends State<PujaBookingScreen> {
       ),
       body: Column(
         children: [
-          // 1. Search Bar
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 6, 16, 8),
             child: TextField(
@@ -974,7 +1205,6 @@ class _PujaBookingScreenState extends State<PujaBookingScreen> {
             ),
           ),
 
-          // 2. Category Filters
           SizedBox(
             height: 36,
             child: ListView.builder(
@@ -1011,7 +1241,6 @@ class _PujaBookingScreenState extends State<PujaBookingScreen> {
 
           const SizedBox(height: 10),
 
-          // 3. Supabase FutureBuilder Listing
           Expanded(
             child: FutureBuilder<List<VedicPujaItem>>(
               future: _pujasFuture,
@@ -1019,10 +1248,10 @@ class _PujaBookingScreenState extends State<PujaBookingScreen> {
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return const Center(child: CircularProgressIndicator(color: kPrimaryBhagwa));
                 }
-                
+
                 final pujasList = snapshot.data ?? _fallbackPujasList;
                 final query = _searchController.text.trim().toLowerCase();
-                
+
                 final filteredPujas = pujasList.where((puja) {
                   final matchesQuery = puja.title.toLowerCase().contains(query) ||
                       puja.deity.toLowerCase().contains(query) ||
@@ -1064,209 +1293,124 @@ class _PujaBookingScreenState extends State<PujaBookingScreen> {
   }
 
   Widget _buildPujaCard(VedicPujaItem puja) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 14),
-      decoration: BoxDecoration(
-        color: kCardColor,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFFFFE0B2)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Banner Image with Badges
-          Stack(
-            children: [
-              ClipRRect(
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(18)),
-                child: Image.network(
-                  puja.imageUrl,
-                  height: 140,
-                  width: double.infinity,
-                  fit: BoxFit.cover,
-                  errorBuilder: (context, error, stackTrace) => Container(
-                    height: 140,
-                    color: const Color(0xFFFFF0E6),
-                    child: const Center(
-                      child: Icon(Icons.temple_hindu_rounded, color: kPrimaryBhagwa, size: 48),
-                    ),
-                  ),
-                ),
-              ),
-              Positioned(
-                top: 8,
-                left: 8,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: const Color(0xCC000000),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.location_on_rounded, color: kGoldAccent, size: 11),
-                      const SizedBox(width: 3),
-                      Text(puja.templeLocation, style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold)),
-                    ],
-                  ),
-                ),
-              ),
-              Positioned(
-                top: 8,
-                right: 8,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: Colors.green.shade700,
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Text(puja.nextDate, style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold)),
-                ),
-              ),
-            ],
-          ),
-
-          // Details Body
-          Padding(
-            padding: const EdgeInsets.all(12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+    return GestureDetector(
+      onTap: () => _openPujaDetailsSheet(puja),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 14),
+        decoration: BoxDecoration(
+          color: kCardColor,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: const Color(0xFFFFE0B2)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Stack(
               children: [
-                Text(
-                  puja.title,
-                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: kTextColor),
+                AutoImageCarousel(
+                  images: puja.imageUrls,
+                  height: 150,
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(18)),
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  "देवता: ${puja.deity} • अवधि: ${puja.duration}",
-                  style: const TextStyle(fontSize: 10, color: kPrimaryBhagwa, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  puja.benefit,
-                  style: const TextStyle(fontSize: 11, color: kSubTextColor),
-                ),
-                const Divider(height: 14),
-
-                // Modes & Pricing Row
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                Positioned(
+                  top: 8,
+                  left: 8,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: const Color(0xCC000000),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Row(
                       children: [
-                        const Text("दक्षिणा शुल्क:", style: TextStyle(fontSize: 9, color: kSubTextColor)),
-                        Row(
-                          children: [
-                            Text(puja.basePrice, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: kTextColor)),
-                            const SizedBox(width: 4),
-                            const Text("से शुरू", style: TextStyle(fontSize: 10, color: kSubTextColor)),
-                          ],
-                        ),
+                        const Icon(Icons.location_on_rounded, color: kGoldAccent, size: 11),
+                        const SizedBox(width: 3),
+                        Text(puja.templeLocation, style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold)),
                       ],
                     ),
-                    ElevatedButton.icon(
-                      onPressed: () => _openBookingModal(puja),
-                      icon: const Icon(Icons.calendar_month_rounded, size: 14),
-                      label: const Text("पूजा बुक करें", style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: kPrimaryBhagwa,
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                      ),
+                  ),
+                ),
+                Positioned(
+                  top: 8,
+                  right: 8,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: Colors.green.shade700,
+                      borderRadius: BorderRadius.circular(6),
                     ),
-                  ],
+                    child: Text(puja.nextDate, style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold)),
+                  ),
                 ),
               ],
             ),
-          ),
-        ],
-      ),
-    );
-  }
-}
 
-// लाइव वीडियो कॉल / स्ट्रीमिंग स्क्रीन
-class LivePujaVideoCallScreen extends StatelessWidget {
-  final String pujaTitle;
-  final String panditName;
-  final String slotTime;
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    puja.title,
+                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: kTextColor),
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      const Icon(Icons.temple_hindu_rounded, color: kPrimaryBhagwa, size: 14),
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: Text(
+                          puja.templeLocation,
+                          style: const TextStyle(fontSize: 11, color: kPrimaryBhagwa, fontWeight: FontWeight.bold),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    puja.benefit,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 11, color: kSubTextColor),
+                  ),
+                  const Divider(height: 14),
 
-  const LivePujaVideoCallScreen({
-    super.key,
-    required this.pujaTitle,
-    required this.panditName,
-    required this.slotTime,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(pujaTitle, style: const TextStyle(fontSize: 13, color: Colors.white, fontWeight: FontWeight.bold)),
-            Text("आचार्य: $panditName • स्लॉट: $slotTime", style: const TextStyle(fontSize: 10, color: Colors.orangeAccent)),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text("दक्षिणा शुल्क (GST सहित):", style: TextStyle(fontSize: 9, color: kSubTextColor)),
+                          Row(
+                            children: [
+                              Text(puja.basePrice, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: kTextColor)),
+                            ],
+                          ),
+                        ],
+                      ),
+                      ElevatedButton.icon(
+                        onPressed: () => _openBookingModal(puja),
+                        icon: const Icon(Icons.calendar_month_rounded, size: 14),
+                        label: const Text("पूजा बुक करें", style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: kPrimaryBhagwa,
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
           ],
         ),
       ),
-      body: Stack(
-        children: [
-          Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(Icons.live_tv_rounded, size: 72, color: Colors.orangeAccent),
-                const SizedBox(height: 20),
-                const Text(
-                  "पंडित जी के साथ लाइव पूजा कनेक्ट हो रही है...\nकृपया अपने कैमरे और माइक की अनुमति दें।",
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: Colors.white70, fontSize: 13, height: 1.4),
-                ),
-              ],
-            ),
-          ),
-          Positioned(
-            bottom: 40,
-            left: 0,
-            right: 0,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                FloatingActionButton(
-                  heroTag: "mic",
-                  backgroundColor: Colors.white24,
-                  onPressed: () {},
-                  child: const Icon(Icons.mic_rounded, color: Colors.white),
-                ),
-                const SizedBox(width: 24),
-                FloatingActionButton(
-                  heroTag: "end_call",
-                  backgroundColor: Colors.red,
-                  onPressed: () => Navigator.pop(context),
-                  child: const Icon(Icons.call_end_rounded, color: Colors.white),
-                ),
-                const SizedBox(width: 24),
-                FloatingActionButton(
-                  heroTag: "camera",
-                  backgroundColor: Colors.white24,
-                  onPressed: () {},
-                  child: const Icon(Icons.videocam_rounded, color: Colors.white),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
     );
   }
-}
+}  

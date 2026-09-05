@@ -1,19 +1,19 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart'; // Supabase इम्पोर्ट किया गया है
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:audioplayers/audioplayers.dart';
 
 const Color kPrimaryBhagwa = Color(0xFFFF6F00);
-const Color kDeepSaffron = Color(0xFFFF5722);
-const Color kGoldAccent = Color(0xFFFFD700);
 const Color kBgColor = Color(0xFFFFF9F4);
 const Color kCardColor = Colors.white;
 const Color kTextColor = Color(0xFF2E1500);
-const Color kSubTextColor = Color(0xFF795548);
+const Color kSubTextColor = Color(0xFF6D4C41);
 
-const List<BoxShadow> kCardShadow = [
+const List<BoxShadow> kSmoothShadow = [
   BoxShadow(
-    color: Color(0x0A000000),
-    blurRadius: 4,
-    offset: Offset(0, 2),
+    color: Color(0x0F000000),
+    blurRadius: 10,
+    offset: Offset(0, 4),
   ),
 ];
 
@@ -25,7 +25,7 @@ class RashifalScreen extends StatefulWidget {
 }
 
 class _RashifalScreenState extends State<RashifalScreen> {
-  int _selectedZodiacIndex = 0; // 0: मेष (Aries), etc.
+  int _selectedZodiacIndex = 0;
   int _timeframeIndex = 0; // 0: दैनिक (Daily), 1: साप्ताहिक (Weekly), 2: वार्षिक (Yearly)
   bool _isPlayingAudio = false;
 
@@ -36,8 +36,12 @@ class _RashifalScreenState extends State<RashifalScreen> {
   String _fetchedHealth = "";
   String _fetchedLuckyNumber = "7";
   String _fetchedLuckyColor = "लाल (Red)";
+  
+  // 🎵 ऑडियो प्लेयर वेरिएबल्स
+  late final AudioPlayer _audioPlayer;
+  String? _fetchedAudioUrl;
 
-  final List<Map<String, String>> _zodiacSigns = [
+  final List<Map<String, String>> _zodiacSigns = const [
     {"name": "मेष", "en": "Aries", "key": "Aries", "date": "Mar 21 - Apr 19", "icon": "♈"},
     {"name": "वृषभ", "en": "Taurus", "key": "Taurus", "date": "Apr 20 - May 20", "icon": "♉"},
     {"name": "मिथुन", "en": "Gemini", "key": "Gemini", "date": "May 21 - Jun 20", "icon": "♊"},
@@ -55,54 +59,100 @@ class _RashifalScreenState extends State<RashifalScreen> {
   @override
   void initState() {
     super.initState();
+    _audioPlayer = AudioPlayer();
     _fetchLiveRashifalFromSupabase();
   }
 
-  // Supabase से लाइव डेटा फेच करने का फंक्शन
+  @override
+  void dispose() {
+    _audioPlayer.dispose();
+    super.dispose();
+  }
+
   Future<void> _fetchLiveRashifalFromSupabase() async {
-    setState(() {
-      _isLoading = true;
-    });
+    if (!mounted) return;
+    setState(() => _isLoading = true);
+
+    await _audioPlayer.stop();
+    setState(() => _isPlayingAudio = false);
 
     try {
       final currentSignKey = _zodiacSigns[_selectedZodiacIndex]["key"]!;
+      final currentSignName = _zodiacSigns[_selectedZodiacIndex]["name"]!;
+      
+      // टैब के हिसाब से सही पीरियड सेट करें
       final periodString = _timeframeIndex == 0 ? 'Daily' : (_timeframeIndex == 1 ? 'Weekly' : 'Yearly');
+      final periodHindi = _timeframeIndex == 0 ? 'दैनिक' : (_timeframeIndex == 1 ? 'साप्ताहिक' : 'वार्षिक');
+
+      debugPrint("🔍 [StrictFetch] Sign: $currentSignKey, Period: $periodString");
 
       final response = await Supabase.instance.client
           .from('rashifal')
           .select('*')
-          .eq('rashi_name', currentSignKey)
-          .eq('period_type', periodString)
-          .order('created_at', ascending: false)
-          .limit(1);
+          .order('created_at', ascending: false);
 
       if (response.isNotEmpty) {
-        final data = response[0];
-        setState(() {
-          _fetchedPrediction = data['prediction'] ?? 'भविष्यफल उपलब्ध नहीं है।';
-          _fetchedCareer = data['career_finance'] ?? 'जानकारी उपलब्ध नहीं।';
-          _fetchedFamily = data['family_love'] ?? 'जानकारी उपलब्ध नहीं।';
-          _fetchedHealth = data['health'] ?? 'जानकारी उपलब्ध नहीं।';
-          _fetchedLuckyNumber = data['lucky_number'] ?? '7';
-          _fetchedLuckyColor = data['lucky_color'] ?? 'लाल (Red)';
-          _isLoading = false;
-        });
+        // एकदम सटीक मिलान: राशि और समयावधि दोनों सौ प्रतिशत मैच होने चाहिए
+        var matchedData = response.firstWhere(
+          (item) {
+            final rName = item['rashi_name']?.toString().trim().toLowerCase() ?? '';
+            final pType = item['period_type']?.toString().trim().toLowerCase() ?? '';
+            
+            bool matchSign = rName == currentSignKey.toLowerCase() || rName == currentSignName.toLowerCase();
+            bool matchPeriod = pType == periodString.toLowerCase() || pType == periodHindi.toLowerCase();
+            
+            return matchSign && matchPeriod;
+          },
+          orElse: () => {}, // अगर मैच न मिले तो खाली मैप देगा ताकि गलत डेटा न दिखाए
+        );
+
+        if (matchedData.isNotEmpty && mounted) {
+          setState(() {
+            _fetchedPrediction = matchedData['prediction'] ?? matchedData['description'] ?? 'भविष्यफल उपलब्ध नहीं है।';
+            _fetchedCareer = matchedData['career_finance'] ?? matchedData['career'] ?? '';
+            _fetchedFamily = matchedData['family_love'] ?? matchedData['family'] ?? '';
+            _fetchedHealth = matchedData['health'] ?? '';
+            _fetchedLuckyNumber = (matchedData['lucky_number'] != null && matchedData['lucky_number'].toString().trim().isNotEmpty)
+                ? matchedData['lucky_number'].toString()
+                : '7';
+            _fetchedLuckyColor = (matchedData['lucky_color'] != null && matchedData['lucky_color'].toString().trim().isNotEmpty)
+                ? matchedData['lucky_color'].toString()
+                : 'लाल (Red)';
+            _fetchedAudioUrl = matchedData['audio_url'];
+            _isLoading = false;
+          });
+        } else {
+          // अगर इस टैब (जैसे Weekly या Yearly) के लिए डेटा नहीं डाला गया है, तो खाली या मेसेज दिखाएं
+          if (mounted) {
+            setState(() {
+              _fetchedPrediction = "इस अवधि (${_timeframeIndex == 0 ? 'दैनिक' : (_timeframeIndex == 1 ? 'साप्ताहिक' : 'वार्षिक')}) के लिए इस राशि का कोई राशिफल उपलब्ध नहीं है।";
+              _fetchedCareer = "";
+              _fetchedFamily = "";
+              _fetchedHealth = "";
+              _fetchedLuckyNumber = "-";
+              _fetchedLuckyColor = "-";
+              _fetchedAudioUrl = null;
+              _isLoading = false;
+            });
+          }
+        }
       } else {
+        if (mounted) {
+          setState(() {
+            _fetchedPrediction = "डेटाबेस में कोई रिकॉर्ड नहीं मिला।";
+            _fetchedAudioUrl = null;
+            _isLoading = false;
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint("❌ [StrictFetch Error]: $e");
+      if (mounted) {
         setState(() {
-          _fetchedPrediction = "इस राशि के लिए अभी कोई नया राशिफल अपडेट नहीं किया गया है। कृपया एडमिन पैनल से पब्लिश करें।";
-          _fetchedCareer = "-";
-          _fetchedFamily = "-";
-          _fetchedHealth = "-";
-          _fetchedLuckyNumber = "-";
-          _fetchedLuckyColor = "-";
+          _fetchedPrediction = "डेटा लोड करने में त्रुटि हुई।";
           _isLoading = false;
         });
       }
-    } catch (e) {
-      setState(() {
-        _fetchedPrediction = "डेटा लोड करने में त्रुटि: $e";
-        _isLoading = false;
-      });
     }
   }
 
@@ -113,11 +163,15 @@ class _RashifalScreenState extends State<RashifalScreen> {
     return Scaffold(
       backgroundColor: kBgColor,
       appBar: AppBar(
-        backgroundColor: kBgColor,
-        elevation: 0,
+        backgroundColor: Colors.white,
+        elevation: 0.5,
+        centerTitle: true,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: kPrimaryBhagwa, size: 20),
-          onPressed: () => Navigator.pop(context),
+          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: kPrimaryBhagwa, size: 18),
+          onPressed: () {
+            _audioPlayer.stop();
+            Navigator.pop(context);
+          },
         ),
         title: const Text(
           "राशिफल (Horoscope)",
@@ -126,12 +180,13 @@ class _RashifalScreenState extends State<RashifalScreen> {
       ),
       body: SingleChildScrollView(
         physics: const ClampingScrollPhysics(),
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(14),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // 1. Horizontal Zodiac Selector
             SizedBox(
-              height: 85,
+              height: 88,
               child: ListView.builder(
                 scrollDirection: Axis.horizontal,
                 physics: const BouncingScrollPhysics(),
@@ -141,24 +196,38 @@ class _RashifalScreenState extends State<RashifalScreen> {
                   final isSelected = _selectedZodiacIndex == index;
                   return GestureDetector(
                     onTap: () {
+                      if (_selectedZodiacIndex == index) return;
                       setState(() => _selectedZodiacIndex = index);
-                      _fetchLiveRashifalFromSupabase(); // राशि बदलने पर नया डेटा लाएगा
+                      _fetchLiveRashifalFromSupabase();
                     },
                     child: Container(
-                      width: 70,
-                      margin: const EdgeInsets.only(right: 10),
+                      width: 72,
+                      margin: const EdgeInsets.only(right: 8),
                       decoration: BoxDecoration(
                         gradient: isSelected
-                            ? const LinearGradient(colors: [kPrimaryBhagwa, kDeepSaffron])
-                            : const LinearGradient(colors: [Colors.white, Color(0xFFFFF0E6)]),
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: isSelected ? kPrimaryBhagwa : Colors.orange.shade200, width: isSelected ? 2 : 1),
-                        boxShadow: kCardShadow,
+                            ? const LinearGradient(
+                                colors: [Color(0xFFFF8F00), Color(0xFFFF6F00)],
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                              )
+                            : const LinearGradient(
+                                colors: [Colors.white, Color(0xFFFFF8F0)],
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                              ),
+                        borderRadius: BorderRadius.circular(18),
+                        border: Border.all(
+                          color: isSelected ? Colors.transparent : Colors.orange.shade200,
+                          width: 1.2,
+                        ),
+                        boxShadow: isSelected
+                            ? [const BoxShadow(color: Color(0x33FF6F00), blurRadius: 8, offset: Offset(0, 4))]
+                            : kSmoothShadow,
                       ),
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Text(sign["icon"]!, style: const TextStyle(fontSize: 22)),
+                          Text(sign["icon"]!, style: const TextStyle(fontSize: 24)),
                           const SizedBox(height: 4),
                           Text(
                             sign["name"]!,
@@ -176,14 +245,16 @@ class _RashifalScreenState extends State<RashifalScreen> {
               ),
             ),
 
-            const SizedBox(height: 16),
+            const SizedBox(height: 14),
 
+            // 2. Timeframe Selector (Daily, Weekly, Yearly)
             Container(
               padding: const EdgeInsets.all(4),
               decoration: BoxDecoration(
-                color: const Color(0xFFFCE4EC),
+                color: Colors.white,
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: Colors.orange.shade200),
+                border: Border.all(color: Colors.orange.shade100),
+                boxShadow: kSmoothShadow,
               ),
               child: Row(
                 children: [
@@ -194,81 +265,120 @@ class _RashifalScreenState extends State<RashifalScreen> {
               ),
             ),
 
-            const SizedBox(height: 16),
+            const SizedBox(height: 14),
 
+            // 3. Selected Zodiac Info & Audio Banner
             Container(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                color: kCardColor,
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: const Color(0xFFFFCC80)),
-                boxShadow: kCardShadow,
+                gradient: const LinearGradient(
+                  colors: [Color(0xFFFFFAF0), Color(0xFFFFF3E0)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: Colors.orange.shade200),
+                boxShadow: kSmoothShadow,
               ),
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Row(
                         children: [
-                          Text(currentSign["icon"]!, style: const TextStyle(fontSize: 28)),
-                          const SizedBox(width: 10),
+                          Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              shape: BoxShape.circle,
+                              boxShadow: [BoxShadow(color: Colors.orange.shade100, blurRadius: 4)],
+                            ),
+                            child: Text(currentSign["icon"]!, style: const TextStyle(fontSize: 24)),
+                          ),
+                          const SizedBox(width: 12),
                           Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text("${currentSign["name"]} राशि (${currentSign["en"]})", style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: kTextColor)),
-                              Text(currentSign["date"]!, style: const TextStyle(fontSize: 10.5, color: kSubTextColor)),
+                              Text(
+                                "${currentSign["name"]} राशि (${currentSign["en"]})",
+                                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: kTextColor),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                currentSign["date"]!,
+                                style: const TextStyle(fontSize: 11, color: kSubTextColor, fontWeight: FontWeight.w500),
+                              ),
                             ],
                           ),
                         ],
                       ),
                       ElevatedButton.icon(
-                        onPressed: () {
-                          setState(() {
-                            _isPlayingAudio = !_isPlayingAudio;
-                          });
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(_isPlayingAudio ? "🎧 ऑडियो राशिफल चलाया जा रहा है..." : "⏸️ ऑडियो रोका गया"),
-                              duration: const Duration(seconds: 2),
-                              backgroundColor: kPrimaryBhagwa,
-                            ),
-                          );
+                        onPressed: () async {
+                          try {
+                            if (_isPlayingAudio) {
+                              await _audioPlayer.pause();
+                              setState(() => _isPlayingAudio = false);
+                            } else {
+                              if (_fetchedAudioUrl != null && _fetchedAudioUrl!.trim().isNotEmpty) {
+                                await _audioPlayer.play(UrlSource(_fetchedAudioUrl!));
+                                setState(() => _isPlayingAudio = true);
+
+                                _audioPlayer.onPlayerComplete.listen((_) {
+                                  if (mounted) setState(() => _isPlayingAudio = false);
+                                });
+                              } else {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: const Text("इस राशिफल के लिए अभी कोई ऑडियो उपलब्ध नहीं है!"),
+                                    backgroundColor: Colors.red.shade700,
+                                    behavior: SnackBarBehavior.floating,
+                                  ),
+                                );
+                              }
+                            }
+                          } catch (e) {
+                            debugPrint("Audio Play Error: $e");
+                          }
                         },
-                        icon: Icon(_isPlayingAudio ? Icons.pause_rounded : Icons.volume_up_rounded, size: 16, color: Colors.white),
-                        label: Text(_isPlayingAudio ? "रोकें" : "सुनें (Audio)", style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white)),
+                        icon: Icon(_isPlayingAudio ? Icons.pause_rounded : Icons.volume_up_rounded, size: 14, color: Colors.white),
+                        label: Text(_isPlayingAudio ? "रोकें" : "सुनें", style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white)),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: kPrimaryBhagwa,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                         ),
                       ),
                     ],
                   ),
                   if (_isPlayingAudio) ...[
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 10),
                     LinearProgressIndicator(
                       backgroundColor: Colors.orange.shade100,
                       valueColor: const AlwaysStoppedAnimation<Color>(kPrimaryBhagwa),
+                      minHeight: 4,
                     ),
                     const SizedBox(height: 4),
-                    const Text("▶ 0:15 / 3:45 (आचार्य जी की वाणी)", style: TextStyle(fontSize: 9.5, color: kSubTextColor)),
+                    const Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text("▶ ऑडियो चलाया जा रहा है (आचार्य जी की वाणी)", style: TextStyle(fontSize: 9.5, color: kSubTextColor)),
+                    ),
                   ],
                 ],
               ),
             ),
 
-            const SizedBox(height: 16),
+            const SizedBox(height: 14),
 
-            // एडमिन पैनल से आया हुआ लाइव डेटा यहाँ शो होगा
+            // 4. Detailed Prediction Card (Live from Supabase)
             Container(
               padding: const EdgeInsets.all(18),
               decoration: BoxDecoration(
                 color: kCardColor,
-                borderRadius: BorderRadius.circular(20),
+                borderRadius: BorderRadius.circular(18),
                 border: Border.all(color: Colors.orange.shade100),
-                boxShadow: kCardShadow,
+                boxShadow: kSmoothShadow,
               ),
               child: _isLoading
                   ? const Center(
@@ -290,42 +400,40 @@ class _RashifalScreenState extends State<RashifalScreen> {
                             ),
                           ],
                         ),
-                        const Divider(height: 20),
+                        const Divider(height: 20, color: Color(0xFFFDEED9)),
                         
-                        // मुख्य भविष्यफल
-                        Text(_fetchedPrediction, style: const TextStyle(fontSize: 13, color: kTextColor, height: 1.6)),
+                        Text(
+                          _fetchedPrediction,
+                          style: const TextStyle(fontSize: 12.5, color: kTextColor, height: 1.6),
+                        ),
                         const SizedBox(height: 14),
 
-                        // करियर एवं व्यापार
                         if (_fetchedCareer.isNotEmpty) ...[
-                          const Text("💼 करियर एवं व्यापार (Career & Business):", style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: kPrimaryBhagwa)),
+                          _buildSectionTitle("💼 करियर एवं व्यापार (Career & Business)"),
                           const SizedBox(height: 4),
-                          Text(_fetchedCareer, style: const TextStyle(fontSize: 12.5, color: kTextColor, height: 1.5)),
+                          Text(_fetchedCareer, style: const TextStyle(fontSize: 12, color: kSubTextColor, height: 1.5)),
                           const SizedBox(height: 14),
                         ],
 
-                        // पारिवारिक जीवन
                         if (_fetchedFamily.isNotEmpty) ...[
-                          const Text("❤️ पारिवारिक जीवन एवं प्रेम संबंध:", style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: kPrimaryBhagwa)),
+                          _buildSectionTitle("❤️ पारिवारिक जीवन एवं प्रेम संबंध"),
                           const SizedBox(height: 4),
-                          Text(_fetchedFamily, style: const TextStyle(fontSize: 12.5, color: kTextColor, height: 1.5)),
+                          Text(_fetchedFamily, style: const TextStyle(fontSize: 12, color: kSubTextColor, height: 1.5)),
                           const SizedBox(height: 14),
                         ],
 
-                        // स्वास्थ्य
                         if (_fetchedHealth.isNotEmpty) ...[
-                          const Text("🧘 स्वास्थ्य एवं सावधानी (Health):", style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: kPrimaryBhagwa)),
+                          _buildSectionTitle("🧘 स्वास्थ्य एवं सावधानी (Health)"),
                           const SizedBox(height: 4),
-                          Text(_fetchedHealth, style: const TextStyle(fontSize: 12.5, color: kTextColor, height: 1.5)),
+                          Text(_fetchedHealth, style: const TextStyle(fontSize: 12, color: kSubTextColor, height: 1.5)),
                           const SizedBox(height: 16),
                         ],
 
-                        // शुभ अंक और शुभ रंग कार्ड
                         Container(
-                          padding: const EdgeInsets.all(12),
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                           decoration: BoxDecoration(
-                            color: const Color(0xFFFFF3E0),
-                            borderRadius: BorderRadius.circular(12),
+                            color: const Color(0xFFFFF8F0),
+                            borderRadius: BorderRadius.circular(14),
                             border: Border.all(color: Colors.orange.shade200),
                           ),
                           child: Row(
@@ -333,13 +441,14 @@ class _RashifalScreenState extends State<RashifalScreen> {
                             children: [
                               Row(
                                 children: [
-                                  const Text("🔢 शुभ अंक: ", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: kTextColor)),
+                                  const Text("🔢 शुभ अंक: ", style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: kTextColor)),
                                   Text(_fetchedLuckyNumber, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: kPrimaryBhagwa)),
                                 ],
                               ),
+                              Container(width: 1, height: 16, color: Colors.orange.shade200),
                               Row(
                                 children: [
-                                  const Text("🎨 शुभ रंग: ", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: kTextColor)),
+                                  const Text("🎨 शुभ रंग: ", style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: kTextColor)),
                                   Text(_fetchedLuckyColor, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: kPrimaryBhagwa)),
                                 ],
                               ),
@@ -350,7 +459,7 @@ class _RashifalScreenState extends State<RashifalScreen> {
                     ),
             ),
 
-            const SizedBox(height: 24),
+            const SizedBox(height: 20),
           ],
         ),
       ),
@@ -362,14 +471,16 @@ class _RashifalScreenState extends State<RashifalScreen> {
     return Expanded(
       child: GestureDetector(
         onTap: () {
+          if (_timeframeIndex == index) return;
           setState(() => _timeframeIndex = index);
-          _fetchLiveRashifalFromSupabase(); // काल (दैनिक/साप्ताहिक/वार्षिक) बदलने पर डेटा लाएगा
+          _fetchLiveRashifalFromSupabase();
         },
         child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 10),
+          padding: const EdgeInsets.symmetric(vertical: 9),
           decoration: BoxDecoration(
             color: isSelected ? kPrimaryBhagwa : Colors.transparent,
             borderRadius: BorderRadius.circular(12),
+            boxShadow: isSelected ? [const BoxShadow(color: Color(0x33FF6F00), blurRadius: 4, offset: Offset(0, 2))] : [],
           ),
           alignment: Alignment.center,
           child: Text(
@@ -377,11 +488,18 @@ class _RashifalScreenState extends State<RashifalScreen> {
             style: TextStyle(
               fontSize: 11.5,
               fontWeight: FontWeight.bold,
-              color: isSelected ? Colors.white : kTextColor,
+              color: isSelected ? Colors.white : kSubTextColor,
             ),
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildSectionTitle(String title) {
+    return Text(
+      title,
+      style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: kPrimaryBhagwa),
     );
   }
 }
