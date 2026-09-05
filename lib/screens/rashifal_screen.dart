@@ -30,16 +30,23 @@ class _RashifalScreenState extends State<RashifalScreen> {
   bool _isPlayingAudio = false;
 
   bool _isLoading = true;
+  String? _fetchedRecordId; // 🆔 लाइव रिकॉर्ड आईडी (Views & Likes अपडेट करने के लिए)
   String _fetchedPrediction = "";
   String _fetchedCareer = "";
   String _fetchedFamily = "";
   String _fetchedHealth = "";
   String _fetchedLuckyNumber = "7";
   String _fetchedLuckyColor = "लाल (Red)";
+  String _fetchedDateRange = ""; // 📅 एडमिन द्वारा डाली गई डेट-रेंज
   
+  // 💙 लाइक और व्यू स्टेट वेरिएबल्स
+  bool _isLiked = false;
+  int _likesCount = 0;
+
   // 🎵 ऑडियो प्लेयर वेरिएबल्स
   late final AudioPlayer _audioPlayer;
   String? _fetchedAudioUrl;
+  StreamSubscription? _audioCompleteSubscription;
 
   final List<Map<String, String>> _zodiacSigns = const [
     {"name": "मेष", "en": "Aries", "key": "Aries", "date": "Mar 21 - Apr 19", "icon": "♈"},
@@ -60,13 +67,96 @@ class _RashifalScreenState extends State<RashifalScreen> {
   void initState() {
     super.initState();
     _audioPlayer = AudioPlayer();
+    
+    // मेमोरी लीक रोकने के लिए ऑडियो कंप्लीशन लिसनर कोफिशिएंटली असाइन करें
+    _audioCompleteSubscription = _audioPlayer.onPlayerComplete.listen((_) {
+      if (mounted) setState(() => _isPlayingAudio = false);
+    });
+
     _fetchLiveRashifalFromSupabase();
   }
 
   @override
   void dispose() {
+    _audioCompleteSubscription?.cancel(); // सब्सक्रिप्शन कैंसिल करना जरूरी है (मेमोरी लीक प्रिवेंशन)
     _audioPlayer.dispose();
     super.dispose();
+  }
+
+  // 👁️ व्यूज काउंट और यूजर ट्रैकिंग Supabase में जोड़ने के लिए (Safe & Non-blocking)
+  Future<void> _recordViewAndLikeStatus(String recordId, List? viewedUsers, List? likedUsers) async {
+    try {
+      final userPhone = Supabase.instance.client.auth.currentUser?.id ?? "guest_user";
+      
+      List updatedViews = viewedUsers != null ? List.from(viewedUsers) : [];
+      if (!updatedViews.contains(userPhone)) {
+        updatedViews.add(userPhone);
+        await Supabase.instance.client
+            .from('rashifal')
+            .update({
+              'views_count': updatedViews.length,
+              'viewed_users': updatedViews,
+            })
+            .eq('id', recordId);
+      }
+
+      if (mounted) {
+        setState(() {
+          _isLiked = likedUsers != null && likedUsers.contains(userPhone);
+          _likesCount = likedUsers?.length ?? 0;
+        });
+      }
+    } catch (e) {
+      debugPrint("View Record Error: $e");
+    }
+  }
+
+  // 💙 लाइक टॉगल करने का सुरक्षित फंक्शन
+  Future<void> _toggleLike() async {
+    if (_fetchedRecordId == null) return;
+
+    try {
+      final userPhone = Supabase.instance.client.auth.currentUser?.id ?? "guest_user";
+      
+      final res = await Supabase.instance.client
+          .from('rashifal')
+          .select('liked_users')
+          .eq('id', _fetchedRecordId!)
+          .maybeSingle();
+
+      List currentLikedUsers = res?['liked_users'] != null ? List.from(res!['liked_users']) : [];
+
+      if (_isLiked) {
+        currentLikedUsers.remove(userPhone);
+      } else {
+        if (!currentLikedUsers.contains(userPhone)) {
+          currentLikedUsers.add(userPhone);
+        }
+      }
+
+      await Supabase.instance.client
+          .from('rashifal')
+          .update({'liked_users': currentLikedUsers})
+          .eq('id', _fetchedRecordId!);
+
+      if (mounted) {
+        setState(() {
+          _isLiked = !_isLiked;
+          _likesCount = currentLikedUsers.length;
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(_isLiked ? "❤️ राशिफल पसंद किया गया!" : "🤍 लाइक हटाया गया"),
+            duration: const Duration(milliseconds: 900),
+            backgroundColor: kPrimaryBhagwa,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint("Like Error: $e");
+    }
   }
 
   Future<void> _fetchLiveRashifalFromSupabase() async {
@@ -74,25 +164,23 @@ class _RashifalScreenState extends State<RashifalScreen> {
     setState(() => _isLoading = true);
 
     await _audioPlayer.stop();
-    setState(() => _isPlayingAudio = false);
+    if (mounted) setState(() => _isPlayingAudio = false);
 
     try {
       final currentSignKey = _zodiacSigns[_selectedZodiacIndex]["key"]!;
       final currentSignName = _zodiacSigns[_selectedZodiacIndex]["name"]!;
       
-      // टैब के हिसाब से सही पीरियड सेट करें
       final periodString = _timeframeIndex == 0 ? 'Daily' : (_timeframeIndex == 1 ? 'Weekly' : 'Yearly');
       final periodHindi = _timeframeIndex == 0 ? 'दैनिक' : (_timeframeIndex == 1 ? 'साप्ताहिक' : 'वार्षिक');
-
-      debugPrint("🔍 [StrictFetch] Sign: $currentSignKey, Period: $periodString");
 
       final response = await Supabase.instance.client
           .from('rashifal')
           .select('*')
           .order('created_at', ascending: false);
 
+      if (!mounted) return;
+
       if (response.isNotEmpty) {
-        // एकदम सटीक मिलान: राशि और समयावधि दोनों सौ प्रतिशत मैच होने चाहिए
         var matchedData = response.firstWhere(
           (item) {
             final rName = item['rashi_name']?.toString().trim().toLowerCase() ?? '';
@@ -103,11 +191,13 @@ class _RashifalScreenState extends State<RashifalScreen> {
             
             return matchSign && matchPeriod;
           },
-          orElse: () => {}, // अगर मैच न मिले तो खाली मैप देगा ताकि गलत डेटा न दिखाए
+          orElse: () => {},
         );
 
-        if (matchedData.isNotEmpty && mounted) {
+        if (matchedData.isNotEmpty) {
+          final recordId = matchedData['id'];
           setState(() {
+            _fetchedRecordId = recordId;
             _fetchedPrediction = matchedData['prediction'] ?? matchedData['description'] ?? 'भविष्यफल उपलब्ध नहीं है।';
             _fetchedCareer = matchedData['career_finance'] ?? matchedData['career'] ?? '';
             _fetchedFamily = matchedData['family_love'] ?? matchedData['family'] ?? '';
@@ -118,32 +208,33 @@ class _RashifalScreenState extends State<RashifalScreen> {
             _fetchedLuckyColor = (matchedData['lucky_color'] != null && matchedData['lucky_color'].toString().trim().isNotEmpty)
                 ? matchedData['lucky_color'].toString()
                 : 'लाल (Red)';
+            _fetchedDateRange = matchedData['date_range'] ?? '';
             _fetchedAudioUrl = matchedData['audio_url'];
             _isLoading = false;
           });
+
+          _recordViewAndLikeStatus(recordId, matchedData['viewed_users'], matchedData['liked_users']);
         } else {
-          // अगर इस टैब (जैसे Weekly या Yearly) के लिए डेटा नहीं डाला गया है, तो खाली या मेसेज दिखाएं
-          if (mounted) {
-            setState(() {
-              _fetchedPrediction = "इस अवधि (${_timeframeIndex == 0 ? 'दैनिक' : (_timeframeIndex == 1 ? 'साप्ताहिक' : 'वार्षिक')}) के लिए इस राशि का कोई राशिफल उपलब्ध नहीं है।";
-              _fetchedCareer = "";
-              _fetchedFamily = "";
-              _fetchedHealth = "";
-              _fetchedLuckyNumber = "-";
-              _fetchedLuckyColor = "-";
-              _fetchedAudioUrl = null;
-              _isLoading = false;
-            });
-          }
-        }
-      } else {
-        if (mounted) {
           setState(() {
-            _fetchedPrediction = "डेटाबेस में कोई रिकॉर्ड नहीं मिला।";
+            _fetchedRecordId = null;
+            _fetchedPrediction = "इस अवधि (${_timeframeIndex == 0 ? 'दैनिक' : (_timeframeIndex == 1 ? 'साप्ताहिक' : 'वार्षिक')}) के लिए इस राशि का कोई राशिफल उपलब्ध नहीं है।";
+            _fetchedCareer = "";
+            _fetchedFamily = "";
+            _fetchedHealth = "";
+            _fetchedLuckyNumber = "-";
+            _fetchedLuckyColor = "-";
+            _fetchedDateRange = "";
             _fetchedAudioUrl = null;
             _isLoading = false;
           });
         }
+      } else {
+        setState(() {
+          _fetchedRecordId = null;
+          _fetchedPrediction = "डेटाबेस में कोई रिकॉर्ड नहीं मिला।";
+          _fetchedAudioUrl = null;
+          _isLoading = false;
+        });
       }
     } catch (e) {
       debugPrint("❌ [StrictFetch Error]: $e");
@@ -177,6 +268,17 @@ class _RashifalScreenState extends State<RashifalScreen> {
           "राशिफल (Horoscope)",
           style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: kTextColor),
         ),
+        actions: [
+          if (_fetchedRecordId != null)
+            IconButton(
+              icon: Icon(
+                _isLiked ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+                color: Colors.red,
+              ),
+              onPressed: _toggleLike,
+              tooltip: "राशिफल लाइक करें",
+            ),
+        ],
       ),
       body: SingleChildScrollView(
         physics: const ClampingScrollPhysics(),
@@ -306,8 +408,8 @@ class _RashifalScreenState extends State<RashifalScreen> {
                               ),
                               const SizedBox(height: 2),
                               Text(
-                                currentSign["date"]!,
-                                style: const TextStyle(fontSize: 11, color: kSubTextColor, fontWeight: FontWeight.w500),
+                                _fetchedDateRange.isNotEmpty ? "📅 $_fetchedDateRange" : currentSign["date"]!,
+                                style: const TextStyle(fontSize: 11.5, color: kPrimaryBhagwa, fontWeight: FontWeight.w600),
                               ),
                             ],
                           ),
@@ -318,23 +420,21 @@ class _RashifalScreenState extends State<RashifalScreen> {
                           try {
                             if (_isPlayingAudio) {
                               await _audioPlayer.pause();
-                              setState(() => _isPlayingAudio = false);
+                              if (mounted) setState(() => _isPlayingAudio = false);
                             } else {
                               if (_fetchedAudioUrl != null && _fetchedAudioUrl!.trim().isNotEmpty) {
                                 await _audioPlayer.play(UrlSource(_fetchedAudioUrl!));
-                                setState(() => _isPlayingAudio = true);
-
-                                _audioPlayer.onPlayerComplete.listen((_) {
-                                  if (mounted) setState(() => _isPlayingAudio = false);
-                                });
+                                if (mounted) setState(() => _isPlayingAudio = true);
                               } else {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: const Text("इस राशिफल के लिए अभी कोई ऑडियो उपलब्ध नहीं है!"),
-                                    backgroundColor: Colors.red.shade700,
-                                    behavior: SnackBarBehavior.floating,
-                                  ),
-                                );
+                                if (mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: const Text("इस राशिफल के लिए अभी कोई ऑडियो उपलब्ध नहीं है!"),
+                                      backgroundColor: Colors.red.shade700,
+                                      behavior: SnackBarBehavior.floating,
+                                    ),
+                                  );
+                                }
                               }
                             }
                           } catch (e) {
@@ -391,13 +491,26 @@ class _RashifalScreenState extends State<RashifalScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            const Icon(Icons.auto_stories_rounded, color: kPrimaryBhagwa, size: 18),
-                            const SizedBox(width: 8),
-                            Text(
-                              _timeframeIndex == 0 ? "आज का विस्तृत भविष्यफल" : (_timeframeIndex == 1 ? "इस सप्ताह का विस्तृत भविष्यफल" : "संपूर्ण भविष्यफल"),
-                              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: kTextColor),
+                            Row(
+                              children: [
+                                const Icon(Icons.auto_stories_rounded, color: kPrimaryBhagwa, size: 18),
+                                const SizedBox(width: 8),
+                                Text(
+                                  _timeframeIndex == 0 ? "आज का विस्तृत भविष्यफल" : (_timeframeIndex == 1 ? "इस सप्ताह का विस्तृत भविष्यफल" : "संपूर्ण भविष्यफल"),
+                                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: kTextColor),
+                                ),
+                              ],
                             ),
+                            if (_likesCount > 0)
+                              Row(
+                                children: [
+                                  const Icon(Icons.favorite, color: Colors.red, size: 14),
+                                  const SizedBox(width: 4),
+                                  Text("$_likesCount", style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.red)),
+                                ],
+                              ),
                           ],
                         ),
                         const Divider(height: 20, color: Color(0xFFFDEED9)),
@@ -436,17 +549,20 @@ class _RashifalScreenState extends State<RashifalScreen> {
                             borderRadius: BorderRadius.circular(14),
                             border: Border.all(color: Colors.orange.shade200),
                           ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceAround,
+                          child: Wrap(
+                            alignment: WrapAlignment.spaceAround,
+                            spacing: 20,
+                            runSpacing: 10,
                             children: [
                               Row(
+                                mainAxisSize: MainAxisSize.min,
                                 children: [
                                   const Text("🔢 शुभ अंक: ", style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: kTextColor)),
                                   Text(_fetchedLuckyNumber, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: kPrimaryBhagwa)),
                                 ],
                               ),
-                              Container(width: 1, height: 16, color: Colors.orange.shade200),
                               Row(
+                                mainAxisSize: MainAxisSize.min,
                                 children: [
                                   const Text("🎨 शुभ रंग: ", style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: kTextColor)),
                                   Text(_fetchedLuckyColor, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: kPrimaryBhagwa)),

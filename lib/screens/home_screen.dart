@@ -335,7 +335,7 @@ class _HomeScreenState extends State<HomeScreen> {
     ),
     AstrologyBlog(
       title: "Shani Sade Sati: Don't Fear, Know Its True Blessings",
-      titleHi: "शनि की साढ़ेसाती: डरें नहीं, जानें प्रभाव और समाधान",
+      titleHi: "शनि की साढ़ेसाती: डरें ব্যথা नहीं, जानें प्रभाव और समाधान",
       category: "Planetary Transit",
       categoryHi: "ग्रह गोचर",
       readTime: "4 min",
@@ -450,8 +450,8 @@ class _HomeScreenState extends State<HomeScreen> {
     Navigator.push(context, MaterialPageRoute(builder: (context) => const ConsultationHistoryScreen()));
   }
 
-  void _handleBannerRedirection(String? target) {
-    switch (target) {
+  void _handleBannerRedirection(String? actionType, String? targetId) {
+    switch (actionType) {
       case 'call':
         setState(() => _currentIndex = 1);
         break;
@@ -1577,34 +1577,18 @@ ${blog.titleHi}
         children: [
           _HomeBannerSlider(
             fallbackBanners: bannerList,
-            onBannerTapWithRedirect: (target) {
-              switch (target) {
-                case 'call':
-                  setState(() => _currentIndex = 1);
-                  break;
-                case 'chat':
-                  setState(() => _currentIndex = 2);
-                  break;
-                case 'live':
-                  setState(() => _currentIndex = 3);
-                  break;
-                case 'shop':
-                  setState(() => _currentIndex = 4);
-                  break;
-                case 'remedies':
-                  setState(() => _currentIndex = 5);
-                  break;
-                case 'kundli':
-                  _openKundliScreen();
-                  break;
-                case 'panchang':
-                  _openPanchangScreen();
-                  break;
-                case 'pooja':
-                  _openPujaBookingScreen();
-                  break;
-                default:
-                  setState(() => _currentIndex = 2);
+            // 🚀 यहाँ एडमिन पैनल के एक्शन और टारगेट ID को हैंडल किया जा रहा है
+            onBannerTapWithRedirect: (actionType, targetId) {
+              if (actionType == 'pooja') {
+                _openPujaBookingScreen();
+              } else if (actionType == 'chat') {
+                setState(() => _currentIndex = 2);
+              } else if (actionType == 'call') {
+                setState(() => _currentIndex = 1);
+              } else if (actionType == 'shop') {
+                setState(() => _currentIndex = 4);
+              } else {
+                _handleBannerRedirection(actionType, targetId);
               }
             },
           ),
@@ -2386,7 +2370,6 @@ class _ShubhMuhuratTickerBannerState extends State<_ShubhMuhuratTickerBanner> {
     int currentLikes = (item["likes_count"] ?? 106) as int;
     bool isLiked = false;
 
-    // 1. Live Views Count Increment in Supabase
     if (bannerId != null && !bannerId.startsWith('fallback_')) {
       try {
         await Supabase.instance.client
@@ -2496,7 +2479,6 @@ class _ShubhMuhuratTickerBannerState extends State<_ShubhMuhuratTickerBanner> {
                               currentLikes += isLiked ? 1 : -1;
                             });
 
-                            // 2. Live Likes Count Update in Supabase
                             if (bannerId != null && !bannerId.startsWith('fallback_')) {
                               try {
                                 await Supabase.instance.client
@@ -2623,7 +2605,7 @@ class _ShubhMuhuratTickerBannerState extends State<_ShubhMuhuratTickerBanner> {
 
 class _HomeBannerSlider extends StatefulWidget {
   final List<BannerItem> fallbackBanners;
-  final Function(String? target) onBannerTapWithRedirect;
+  final Function(String? actionType, String? targetId) onBannerTapWithRedirect;
 
   const _HomeBannerSlider({
     required this.fallbackBanners,
@@ -2637,6 +2619,7 @@ class _HomeBannerSlider extends StatefulWidget {
 class _HomeBannerSliderState extends State<_HomeBannerSlider> {
   late PageController _controller;
   Timer? _timer;
+  Timer? _syncTimer; // 🌟 नया टाइमर: डेटाबेस से लाइव सिंक करने के लिए
   int _currentIndex = 0;
   List<Map<String, dynamic>> _dbBanners = [];
 
@@ -2645,6 +2628,23 @@ class _HomeBannerSliderState extends State<_HomeBannerSlider> {
     super.initState();
     _controller = PageController(initialPage: 0);
     _fetchBannersOnce();
+
+    // 🌟 हर 3 सेकंड में एडमिन पैनल से नया डेटा अपने आप ऐप में आएगा!
+    _syncTimer = Timer.periodic(const Duration(seconds: 3), (timer) {
+      _fetchBannersOnce();
+    });
+
+    _timer = Timer.periodic(const Duration(seconds: 4), (timer) {
+      final activeBanners = _dbBanners.isNotEmpty ? _dbBanners : widget.fallbackBanners;
+      if (activeBanners.isNotEmpty && _controller.hasClients) {
+        _currentIndex = (_currentIndex + 1) % activeBanners.length;
+        _controller.animateToPage(
+          _currentIndex,
+          duration: const Duration(milliseconds: 500),
+          curve: Curves.easeInOut,
+        );
+      }
+    });
   }
 
   Future<void> _fetchBannersOnce() async {
@@ -2662,18 +2662,6 @@ class _HomeBannerSliderState extends State<_HomeBannerSlider> {
         });
       }
     } catch (_) {}
-
-    _timer = Timer.periodic(const Duration(seconds: 4), (timer) {
-      final activeBanners = _dbBanners.isNotEmpty ? _dbBanners : widget.fallbackBanners;
-      if (activeBanners.isNotEmpty && _controller.hasClients) {
-        _currentIndex = (_currentIndex + 1) % activeBanners.length;
-        _controller.animateToPage(
-          _currentIndex,
-          duration: const Duration(milliseconds: 500),
-          curve: Curves.easeInOut,
-        );
-      }
-    });
   }
 
   Color _hexToColor(String? hexString, Color fallback) {
@@ -2691,6 +2679,7 @@ class _HomeBannerSliderState extends State<_HomeBannerSlider> {
   @override
   void dispose() {
     _timer?.cancel();
+    _syncTimer?.cancel(); // 🌟 टाइमर बंद करें
     _controller.dispose();
     super.dispose();
   }
@@ -2712,35 +2701,46 @@ class _HomeBannerSliderState extends State<_HomeBannerSlider> {
         itemCount: activeBanners.length,
         itemBuilder: (context, index) {
           String imageUrl = '';
+          String profileImageUrl = '';
           String title = '';
           String subtitle = '';
           String badge = 'DIVINE GUIDANCE 🚩';
           String btnText = 'Explore Now';
           String bannerType = 'full_image';
-          String redirectTo = 'chat';
+          String actionType = 'chat';
+          String targetId = '';
           Color gradStart = kPrimaryBhagwa;
           Color gradEnd = kDeepSaffron;
 
           if (_dbBanners.isNotEmpty) {
             final item = _dbBanners[index];
-            imageUrl = item['image_url'] ?? '';
-            title = item['title'] ?? '';
-            subtitle = item['subtitle'] ?? '';
-            badge = item['badge'] ?? 'DIVINE GUIDANCE 🚩';
-            btnText = item['btn_text'] ?? 'Explore Now';
-            bannerType = item['banner_type'] ?? 'full_image';
-            redirectTo = item['redirect_to'] ?? 'chat';
+            imageUrl = item['image_url']?.toString() ?? '';
+            
+            // 🌟 बिल्कुल सटीक प्रोफाइल इमेज फेच लॉजिक ताकि फोटो मिस न हो
+            profileImageUrl = item['profile_image_url']?.toString() ?? '';
+            if (profileImageUrl.trim().isEmpty || profileImageUrl == 'null') {
+              profileImageUrl = imageUrl;
+            }
+            
+            title = item['title']?.toString() ?? '';
+            subtitle = item['subtitle']?.toString() ?? '';
+            badge = item['badge']?.toString() ?? 'DIVINE GUIDANCE 🚩';
+            btnText = item['button_text']?.toString() ?? 'Explore Now';
+            bannerType = item['banner_type']?.toString() ?? 'card_style';
+            actionType = item['action_type']?.toString() ?? 'chat';
+            targetId = item['target_id']?.toString() ?? '';
             gradStart = _hexToColor(item['gradient_start'], kPrimaryBhagwa);
             gradEnd = _hexToColor(item['gradient_end'], kDeepSaffron);
           } else {
             final item = widget.fallbackBanners[index];
             imageUrl = item.imageUrl;
+            profileImageUrl = item.imageUrl;
             title = item.title;
             subtitle = item.subtitle;
             badge = item.badge;
             btnText = item.btnText;
             bannerType = item.bannerType;
-            redirectTo = item.redirectTo;
+            actionType = item.redirectTo;
             gradStart = item.gradient.first;
             gradEnd = item.gradient.last;
           }
@@ -2748,7 +2748,7 @@ class _HomeBannerSliderState extends State<_HomeBannerSlider> {
           final bool isFullImage = bannerType == 'full_image';
 
           return GestureDetector(
-            onTap: () => widget.onBannerTapWithRedirect(redirectTo),
+            onTap: () => widget.onBannerTapWithRedirect(actionType, targetId),
             child: Container(
               margin: const EdgeInsets.symmetric(horizontal: 2),
               decoration: BoxDecoration(
@@ -2826,7 +2826,7 @@ class _HomeBannerSliderState extends State<_HomeBannerSlider> {
                                     ],
                                   ),
                                   ElevatedButton(
-                                    onPressed: () => widget.onBannerTapWithRedirect(redirectTo),
+                                    onPressed: () => widget.onBannerTapWithRedirect(actionType, targetId),
                                     style: ElevatedButton.styleFrom(
                                       backgroundColor: Colors.white,
                                       foregroundColor: gradStart,
@@ -2863,7 +2863,7 @@ class _HomeBannerSliderState extends State<_HomeBannerSlider> {
                                       ),
                                       child: ClipOval(
                                         child: Image.network(
-                                          imageUrl,
+                                          profileImageUrl,
                                           fit: BoxFit.cover,
                                           errorBuilder: (context, error, stackTrace) => Container(
                                             color: Colors.white24,
