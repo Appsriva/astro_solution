@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 const Color kPrimaryBhagwa = Color(0xFFFF6F00);
 const Color kDeepSaffron = Color(0xFFFF5722);
@@ -40,6 +41,28 @@ class RemedyItem {
     required this.benefits,
     required this.detailedBlog,
   });
+
+  // 🌟 Supabase JSON से मॉडल बनाने के लिए फैक्ट्री मेथड
+  factory RemedyItem.fromSupabase(Map<String, dynamic> map) {
+    var rawBenefits = map['key_benefits'];
+    List<String> parsedBenefits = [];
+    if (rawBenefits is List) {
+      parsedBenefits = rawBenefits.map((e) => e.toString()).toList();
+    }
+
+    return RemedyItem(
+      id: map['id']?.toString() ?? '',
+      category: map['category']?.toString() ?? 'नवग्रह शांति',
+      title: map['title']?.toString() ?? '',
+      subtitle: map['short_description']?.toString() ?? '',
+      planetOrDeity: map['planet_or_deity']?.toString() ?? 'वैदिक उपाय',
+      mantra: map['siddh_mantra']?.toString() ?? '',
+      readTime: map['read_time']?.toString() ?? '3 मिनट का पाठ',
+      imageUrl: map['banner_image']?.toString() ?? '',
+      benefits: parsedBenefits.isNotEmpty ? parsedBenefits : ['समस्या का स्थायी समाधान', 'मानसिक शांति व सकारात्मक ऊर्जा'],
+      detailedBlog: map['blog_body']?.toString() ?? '',
+    );
+  }
 }
 
 class RemediesScreen extends StatefulWidget {
@@ -53,6 +76,9 @@ class _RemediesScreenState extends State<RemediesScreen> {
   String _selectedCategory = "सभी उपाय";
   final TextEditingController _searchController = TextEditingController();
 
+  List<RemedyItem> _supabaseRemedies = [];
+  bool _isLoading = true;
+
   static const List<String> _categories = [
     "सभी उपाय",
     "नवग्रह शांति",
@@ -63,7 +89,8 @@ class _RemediesScreenState extends State<RemediesScreen> {
     "वास्तु उपाय",
   ];
 
-  static const List<RemedyItem> _remediesList = [
+  // 🌟 पुराने हार्डकोडेड फॉलबैक डेटा (सुरक्षा के लिए बरकरार)
+  static const List<RemedyItem> _fallbackRemediesList = [
     RemedyItem(
       id: "rem_1",
       category: "नवग्रह शांति",
@@ -118,79 +145,44 @@ class _RemediesScreenState extends State<RemediesScreen> {
 संध्या के समय घर में झाड़ू न लगाएं और मुख्य द्वार पर जूते-चप्पल न रखें।
 """,
     ),
-    RemedyItem(
-      id: "rem_3",
-      category: "कालसर्प / दोष",
-      title: "कालसर्प एवं राहु-केतु दोष निवारण महा-अनुष्ठान",
-      subtitle: "अचानक बनते काम बिगड़ने, डरावने सपने व मानसिक तनाव से मुक्ति।",
-      planetOrDeity: "देवाधिदेव महादेव (शिव)",
-      mantra: "ॐ नमः शिवाय • ॐ रां राहवे नमः",
-      readTime: "5 मिनट का पाठ",
-      imageUrl: "https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=600&auto=format&fit=crop&q=80",
-      benefits: [
-        "मानसिक बेचैनी और अज्ञात भय समाप्त होता है",
-        "विवाह और संतान प्राप्ति की रुकावटें दूर होती हैं",
-        "कार्यक्षेत्र में स्थिरता और अचानक लाभ",
-      ],
-      detailedBlog: """
-जब जन्मकुंडली में सभी सातों मुख्य ग्रह राहु और केतु की धुरी के बीच आ जाते हैं, तब कालसर्प योग का निर्माण होता है। इससे जीवन में बार-बार उतार-चढ़ाव आते हैं।
-
-कालसर्प शांति के सरल उपाय:
-1. महामृत्युंजय मंत्र: प्रतिदिन या प्रति सोमवार रुद्राक्ष की माला से 108 बार महामृत्युंजय मंत्र का सस्वर जाप करें।
-2. नाग-नागिन का अर्पण: नागपंचमी या सोमवार को चांदी या तांबे का नाग-नागिन जोड़ा शिवलिंग पर अर्पित करें।
-3. शिवलिंग अभिषेक: सोमवार को कच्चे दूध में काले तिल मिलाकर शिवलिंग का अभिषेक करें।
-4. पक्षियों को दाना: नित्य सुबह सात प्रकार के अनाजों (सप्तधान्य) को पक्षियों को खिलाएं।
-""",
-    ),
-    RemedyItem(
-      id: "rem_4",
-      category: "विवाह एवं प्रेम",
-      title: "शीघ्र विवाह एवं मांगलिक दोष शांति के चमत्कारी नियम",
-      subtitle: "रिश्ते पक्के होने में आ रही रुकावटों और दांपत्य कलह का निवारण।",
-      planetOrDeity: "भगवान विष्णु एवं मां कात्यायनी",
-      mantra: "कात्यायनि महामाये महायोगिन्यधीश्वरि",
-      readTime: "3 मिनट का पाठ",
-      imageUrl: "https://images.unsplash.com/photo-1583939003579-730e3918a45a?w=600&auto=format&fit=crop&q=80",
-      benefits: [
-        "योग्य एवं मनपसंद जीवनसाथी की प्राप्ति",
-        "मांगलिक दोष के प्रभाव में भारी कमी",
-        "दांपत्य जीवन में प्रेम और सामंजस्य",
-      ],
-      detailedBlog: """
-गुरु ग्रह (बृहस्पति) और शुक्र ग्रह की कमजोरी के कारण विवाह में अनावश्यक विलंब होता है। 
-
-शीघ्र विवाह के उपाय:
-1. गुरुवार का व्रत: गुरुवार के दिन पीले वस्त्र धारण करें और केले के वृक्ष में हल्दी मिला जल अर्पित कर दीपक लगाएं।
-2. कात्यायनी स्तुति: कन्याएं शीघ्र विवाह हेतु माता कात्यायनी के मंत्र का जप करें।
-3. विष्णु-सहस्रनाम: लड़कों को अपने विवाह में आ रही अड़चनों को दूर करने के लिए नित्य विष्णु सहस्रनाम का पाठ करना चाहिए।
-4. पुखराज या टोपाज: किसी योग्य ज्योतिषी से कुंडली दिखाकर तर्जनी उंगली में पीला पुखराज धारण करें।
-""",
-    ),
-    RemedyItem(
-      id: "rem_5",
-      category: "स्वास्थ्य एवं दीर्घायु",
-      title: "शनि साढ़ेसाती एवं असाध्य रोगों से रक्षा हेतु हनुमान साधना",
-      subtitle: "शनिदेव की क्रूर दृष्टि से बचाव और शारीरिक व्याधियों का नाश।",
-      planetOrDeity: "पवनपुत्र हनुमान एवं शनिदेव",
-      mantra: "ॐ शं शनैश्चराय नमः • ॐ हनुमते नमः",
-      readTime: "4 मिनट का पाठ",
-      imageUrl: "https://images.unsplash.com/photo-1532274402911-5a369e4c4bb5?w=600&auto=format&fit=crop&q=80",
-      benefits: [
-        "दुर्घटनाओं और गंभीर बीमारियों से सुरक्षा कवच",
-        "शनि साढ़ेसाती और ढैय्या के कष्टों में राहत",
-        "शत्रु बाधा और नकारात्मक शक्तियों का नाश",
-      ],
-      detailedBlog: """
-शनि न्याय के देवता हैं। यदि कुंडली में शनि अशुभ स्थान पर हो तो जोड़ों का दर्द, आलस्य और मानसिक तनाव बढ़ जाता है।
-
-शनि कृपा पाने के उपाय:
-1. सुंदरकांड का पाठ: प्रत्येक मंगलवार और शनिवार को संध्याकाल में सुंदरकांड या हनुमान चालीसा का पाठ करें।
-2. छाया दान: शनिवार की सुबह कांसे या लोहे की कटोरी में सरसों का तेल डालकर उसमें अपना चेहरा देखें और उसे दान करें।
-3. पीपल प्रदक्षिणा: शनिवार की शाम पीपल के वृक्ष के नीचे सरसों के तेल का चौमुखा दीपक जलाकर 7 परिक्रमा करें।
-4. काले कुत्ते की सेवा: नित्य काले कुत्ते को सरसों का तेल लगी रोटी खिलाएं।
-""",
-    ),
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchRemediesFromSupabase();
+  }
+
+  // 🌟 Supabase से लाइव डेटा फेच करने का फंक्शन (Null-safety & Mounted check के साथ)
+  Future<void> _fetchRemediesFromSupabase() async {
+    try {
+      final supabase = Supabase.instance.client;
+      final response = await supabase
+          .from('vedic_upays')
+          .select()
+          .order('created_at', ascending: false);
+
+      if (!mounted) return;
+
+      if (response != null && response.isNotEmpty) {
+        final List<RemedyItem> loaded = response.map((item) => RemedyItem.fromSupabase(item)).toList();
+        setState(() {
+          _supabaseRemedies = loaded;
+          _isLoading = false;
+        });
+      } else {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      debugPrint("Error fetching remedies from Supabase: $e");
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
 
   @override
   void dispose() {
@@ -398,9 +390,12 @@ class _RemediesScreenState extends State<RemediesScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // 🌟 यदि Supabase से डेटा आ गया है तो उसे दिखाएं, अन्यथा फॉलबैक डेटा का उपयोग करें
+    final activeList = _supabaseRemedies.isNotEmpty ? _supabaseRemedies : _fallbackRemidiesHelper();
+
     final filteredRemedies = _selectedCategory == "सभी उपाय"
-        ? _remediesList
-        : _remediesList.where((r) => r.category == _selectedCategory).toList();
+        ? activeList
+        : activeList.where((r) => r.category == _selectedCategory).toList();
 
     return Scaffold(
       backgroundColor: kBgColor,
@@ -610,5 +605,9 @@ class _RemediesScreenState extends State<RemediesScreen> {
         ),
       ),
     );
+  }
+
+  List<RemedyItem> _fallbackRemidiesHelper() {
+    return _fallbackRemediesList;
   }
 }

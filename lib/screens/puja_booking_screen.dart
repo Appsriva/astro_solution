@@ -3,6 +3,29 @@ import 'dart:js' as js;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'astro_orders_screen.dart';
+import 'astro_shop_screen.dart';
+import 'astrologer_detail_screen.dart';
+import 'call_screen.dart';
+import 'chat_screen.dart';
+import 'consultation_history_screen.dart';
+import 'customer_support_screen.dart';
+import 'join_as_astrologer_screen.dart';
+import 'kundli_screen.dart';
+import 'live_darshan_screen.dart';
+import 'live_screen.dart';
+import 'login_screen.dart';
+import 'matching_screen.dart';
+import 'panchang_screen.dart';
+import 'pandit_bookings_history_screen.dart';
+import 'pandit_detail_screen.dart';
+import 'puja_booking_screen.dart';
+import 'puja_bookings_history_screen.dart';
+import 'rashifal_screen.dart';
+import 'refer_and_earn_screen.dart';
+import 'remedies_screen.dart';
+import 'wallet_history_screen.dart';
+import 'wallet_screen.dart';
 
 const Color kPrimaryBhagwa = Color(0xFFFF6F00);
 const Color kDeepSaffron = Color(0xFFFF5722);
@@ -56,9 +79,9 @@ class VedicPujaItem {
   final String templeAddress;
   final String benefit;
   final String category;
-  final double baseDakshinaNumeric; // 💡 एडमिन पैनल से आया हुआ शुद्ध बेस अमाउंट
-  final double adminProfitNumeric;  // 💡 छिपा हुआ एडमिन प्रॉफिट
-  final double totalPayableNumeric; // 💡 18% GST सहित कुल राशि
+  final double baseDakshinaNumeric;
+  final double adminProfitNumeric;  
+  final double totalPayableNumeric; 
   final String priceSingle;
   final String priceFamily;
   final String priceMaha;
@@ -149,7 +172,6 @@ class VedicPujaItem {
       ];
     }
 
-    // 💡 सटीक वित्तीय कैलकुलेशन: सीधे एडमिन पैनल की फाइनल वैल्यू लेना
     double calculatedTotal = double.tryParse(map['total_payable_amount']?.toString() ?? '') ?? 
         double.tryParse(map['dakshina_amount']?.toString() ?? '') ?? 12980;
     
@@ -368,6 +390,21 @@ class _PujaBookingScreenState extends State<PujaBookingScreen> {
           await Supabase.instance.client.from('pooja_bookings').insert(payload);
           debugPrint("✅ Booking Saved to Supabase successfully as Paid!");
 
+          // 🔔 तुरंत नोटिफिकेशन लॉग में एंट्री ताकि बेल आइकॉन पर तुरंत दिखे
+          try {
+            final user = Supabase.instance.client.auth.currentUser;
+            await Supabase.instance.client.from('notifications_log').insert({
+              'user_id': user?.id,
+              'title': '🪔 मंदिर पूजा बुकिंग कन्फर्म!',
+              'message': '${puja.title} की बुकिंग सफलतापूर्वक हो गई है।',
+              'target_audience': 'user_app',
+              'sent_by': yajmanName,
+              'created_at': DateTime.now().toIso8601String(),
+            });
+          } catch (notifErr) {
+            debugPrint("Notification log error: $notifErr");
+          }
+
           if (mounted) {
             _showPujaSuccessDialog(
               puja: puja,
@@ -394,6 +431,7 @@ class _PujaBookingScreenState extends State<PujaBookingScreen> {
       rzp.callMethod('open');
     } catch (e) {
       debugPrint("Razorpay Web Open Error: $e");
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text("Razorpay लोड नहीं हो सका: $e"),
@@ -579,7 +617,6 @@ class _PujaBookingScreenState extends State<PujaBookingScreen> {
         return StatefulBuilder(
           builder: (context, setModalState) {
             
-            // 💡 फिक्स: सीधे एडमिन पैनल की अंतिम तय राशि (Final Amount) का उपयोग
             double finalPayableAmount = puja.totalPayableNumeric;
             double baseAmountWithoutGst = (finalPayableAmount / 1.18);
             double gstAmount = finalPayableAmount - baseAmountWithoutGst;
@@ -949,7 +986,7 @@ class _PujaBookingScreenState extends State<PujaBookingScreen> {
                           'user_name': yajmanName,
                           'user_phone': phone,
                           'pooja_id': puja.id,
-                          'puja_title': puja.title,
+                          'pooja_title': puja.title,
                           'booking_amount': finalPayableAmount,
                           'admin_profit': puja.adminProfitNumeric,
                           'mode': 'Offline',
@@ -959,6 +996,8 @@ class _PujaBookingScreenState extends State<PujaBookingScreen> {
 
                         Navigator.pop(modalContext);
 
+                        // 💡 यदि आप टेस्ट मोड में Razorpay को पूरी तरह बायपास करके तुरंत डायरेक्ट डेटाबेस में सेव करना चाहें, 
+                        // तो आप सीधे यह ब्लॉक चला सकते हैं, या Razorpay वेब चेकआउट कॉल रख सकते हैं:
                         _openRazorpayWebCheckout(
                           bookingPayload: payload,
                           puja: puja,
@@ -1413,4 +1452,4 @@ class _PujaBookingScreenState extends State<PujaBookingScreen> {
       ),
     );
   }
-}  
+}

@@ -1,6 +1,10 @@
 import 'dart:async';
+import 'dart:math' as math;
+import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:image_picker/image_picker.dart';
 import 'astro_orders_screen.dart';
 import 'astro_shop_screen.dart';
 import 'astrologer_detail_screen.dart';
@@ -100,30 +104,6 @@ class RecentSessionAstrologer {
   });
 }
 
-class AstrologyBlog {
-  final String title;
-  final String titleHi;
-  final String category;
-  final String categoryHi;
-  final String readTime;
-  final String date;
-  final String imageUrl;
-  final String content;
-  final String contentHi;
-
-  const AstrologyBlog({
-    required this.title,
-    required this.titleHi,
-    required this.category,
-    required this.categoryHi,
-    required this.readTime,
-    required this.date,
-    required this.imageUrl,
-    required this.content,
-    required this.contentHi,
-  });
-}
-
 class PanditBookingItem {
   final String id;
   final String name;
@@ -168,6 +148,8 @@ class _HomeScreenState extends State<HomeScreen> {
   final TextEditingController _feedbackController = TextEditingController();
 
   String _selectedFeedbackType = "सुझाव / फीडबैक";
+  XFile? _selectedFeedbackImage;
+  bool _isSubmittingFeedback = false;
 
   String _displayName = "यजमान";
   double _walletBalance = 0.0;
@@ -321,42 +303,6 @@ class _HomeScreenState extends State<HomeScreen> {
     ),
   ];
 
-  static const List<AstrologyBlog> _blogsList = [
-    AstrologyBlog(
-      title: "Signs of Kaal Sarp Dosh & Simple Vedic Remedies",
-      titleHi: "कालसर्प दोष के लक्षण और 5 सरल वैदिक अचूक उपाय",
-      category: "Kundli Dosh",
-      categoryHi: "कुंडली दोष",
-      readTime: "3 min",
-      date: "Today",
-      imageUrl: "https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=500&auto=format&fit=crop&q=80",
-      content: "कालसर्प योग बनने पर महामृत्युंजय मंत्र का जाप और नाग-नागिन का जोड़ा अर्पित करें।",
-      contentHi: "जब जन्मकुंडली में राहु और केतु के बीच सभी ग्रह आ जाएं तब कालसर्प दोष बनता है। नित्य महामृत्युंजय मंत्र का जाप करें और सोमवार को शिवलिंग पर जल अर्पित करें।",
-    ),
-    AstrologyBlog(
-      title: "Shani Sade Sati: Don't Fear, Know Its True Blessings",
-      titleHi: "शनि की साढ़ेसाती: डरें ব্যথা नहीं, जानें प्रभाव और समाधान",
-      category: "Planetary Transit",
-      categoryHi: "ग्रह गोचर",
-      readTime: "4 min",
-      date: "Yesterday",
-      imageUrl: "https://images.unsplash.com/photo-1532274402911-5a369e4c4bb5?w=500&auto=format&fit=crop&q=80",
-      content: "शनिवार को पीपल के नीचे सरसों के तेल का दीपक लगाएं और हनुमान चालीसा पढ़ें।",
-      contentHi: "शनिदेव न्याय के देवता हैं। शनिवार की शाम पीपल के नीचे सरसों के तेल का दीपक जलाएं और नित्य हनुमान चालीसा का पाठ करें।",
-    ),
-    AstrologyBlog(
-      title: "5 Powerful Vastu & Astrology Tips for Prosperity",
-      titleHi: "घर में धन और सुख-शांति के लिए 5 अचूक वास्तु नियम",
-      category: "Vastu Tips",
-      categoryHi: "वास्तु उपाय",
-      readTime: "2 min",
-      date: "2 days ago",
-      imageUrl: "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=500&auto=format&fit=crop&q=80",
-      content: "घर के ईशान कोण को साफ रखें और शाम को कपूर जलाएं।",
-      contentHi: "घर के ईशान कोण (North-East) को हमेशा साफ और हल्का रखें। शाम के समय घर में कपूर और लौंग की धूप दिखाएं।",
-    ),
-  ];
-
   static const List<BannerItem> _bannersEnglish = [
     BannerItem(
       badge: "DIVINE GUIDANCE 🚩",
@@ -450,6 +396,84 @@ class _HomeScreenState extends State<HomeScreen> {
     Navigator.push(context, MaterialPageRoute(builder: (context) => const ConsultationHistoryScreen()));
   }
 
+  // 🔔 100% सुरक्षित और फिक्स किया गया नोटिफिकेशन डायलॉग फंक्शन
+  void _showNotificationsDialog(BuildContext context) async {
+    final supabase = Supabase.instance.client;
+    List<Map<String, dynamic>> notifications = [];
+    
+    try {
+      final response = await supabase
+          .from('notifications_log')
+          .select()
+          .order('created_at', ascending: false)
+          .limit(20);
+
+      if (response is List) {
+        notifications = List<Map<String, dynamic>>.from(response);
+      }
+    } catch (e) {
+      debugPrint("Error fetching notifications: $e");
+    }
+
+    if (!mounted) return;
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Row(
+            children: [
+              Icon(Icons.notifications_active_rounded, color: Color(0xFFFFD700)),
+              SizedBox(width: 8),
+              Text("सूचनाएं (Notifications)", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: kTextColor)),
+            ],
+          ),
+          content: SizedBox(
+            width: double.maxFinite,
+            height: 320,
+            child: notifications.isEmpty
+                ? const Center(
+                    child: Text(
+                      "फिलहाल कोई नया नोटिफिकेशन नहीं है।",
+                      style: TextStyle(fontSize: 12, color: kSubTextColor),
+                    ),
+                  )
+                : ListView.builder(
+                    itemCount: notifications.length,
+                    itemBuilder: (context, index) {
+                      final item = notifications[index];
+                      return Card(
+                        elevation: 1,
+                        margin: const EdgeInsets.symmetric(vertical: 4),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        child: ListTile(
+                          leading: const Icon(Icons.notifications_rounded, color: kPrimaryBhagwa),
+                          title: Text(
+                            item['title'] ?? 'विशेष सूचना',
+                            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: kTextColor),
+                          ),
+                          subtitle: Text(
+                            item['message'] ?? '',
+                            style: const TextStyle(fontSize: 11, color: kSubTextColor),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+          ),
+          actions: [
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context),
+              style: ElevatedButton.styleFrom(backgroundColor: kPrimaryBhagwa, foregroundColor: Colors.white),
+              child: const Text("बंद करें"),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   void _handleBannerRedirection(String? actionType, String? targetId) {
     switch (actionType) {
       case 'call':
@@ -481,44 +505,13 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  void _openBlogReader(AstrologyBlog blog) {
-    final String detailedContentEn = """
-${blog.title}
-
-Introduction:
-Vedic astrology is an ancient and profound science that guides us through the cosmic influences shaping our lives. Understanding planetary positions helps us navigate challenges and harness positive energies effectively.
-
-Detailed Astrological Analysis:
-According to sacred texts, cosmic transits and natal chart placements dictate various phases of growth, obstacles, and spiritual evolution. When afflicted, specific doshas or planetary retrogrades can cause delays in career, marriage, or financial stability. However, the scriptures do not just outline problems; they offer time-tested, divine remedies.
-
-Core Vedic Remedies & Solutions:
-1. Mantra Chanting & Japa: Regular recitation of specific planetary mantras purifies the aura and strengthens weak benefic planets in your horoscope.
-2. Charity & Daan: Donating items associated with ruling planets (like yellow items for Jupiter or black sesame for Saturn) on auspicious days mitigates malefic impacts.
-3. Gemstones & Rudraksha: Wearing prescribed gemstones or consecrated Rudraksha beads after proper astrological consultation creates a protective shield of positive frequencies.
-4. Lifestyle & Vastu Adjustments: Aligning your living space with Vastu principles and maintaining a disciplined spiritual routine attracts abundance and peace.
-
-Conclusion:
-Astrology is a map of potential, not a final sentence. With faith, correct remedial measures, and expert guidance, anyone can overcome planetary afflictions and lead a prosperous, harmonious life.
-""";
-
-    final String detailedContentHi = """
-${blog.titleHi}
-
-परिचय (Introduction):
-वैदिक ज्योतिष एक अत्यंत प्राचीन और दिव्य विज्ञान है, जो ब्रह्मांडीय ऊर्जाओं और ग्रहों की चाल के माध्यम से हमारे जीवन को सही दिशा दिखाता है। जन्मकुंडली में ग्रहों की स्थिति यह तय करती है कि हमारे जीवन में कब सफलता आएगी और कब बाधाएं आएंगी।
-
-ज्योतिषीय विश्लेषण एवं प्रभाव (Astrological Analysis):
-शास्त्रों के अनुसार, जब जन्मकुंडली में कोई ग्रह नीच का होता है या राहु-केतु-शनि का प्रभाव बढ़ता है, तब जीवन में अचानक संघर्ष, मानसिक तनाव, व्यापार में रुकावट या विवाह में देरी जैसी समस्याएं आने लगती हैं। लेकिन सनातन धर्म में हर समस्या का समाधान भी निहित है।
-
-5 अचूक वैदिक उपाय एवं समाधान (Core Vedic Remedies):
-1. मंत्र जाप एवं अनुष्ठान: अपने इष्ट देव या संबंधित ग्रह के बीज मंत्र का नित्य एक माला जाप करने से नकारात्मक ऊर्जा समाप्त होती है और सकारात्मकता का संचार होता है।
-2. दान एवं पुण्य कार्य: ज्योतिषीय गणना के अनुसार जरूरतमंदों को अन्न, वस्त्र या ग्रहों से जुड़ी वस्तुओं (जैसे शनिवार को काला तिल या सरसों का तेल) का दान करने से महादोष शांत होते हैं।
-3. रत्न एवं रुद्राक्ष धारण: योग्य ज्योतिषी की सलाह से प्राण-प्रतिष्ठित रत्न या पंचमुखी/सातमुखी रुद्राक्ष धारण करने से कवच जैसा सुरक्षा चक्र बनता है।
-4. वास्तु एवं दिनचर्या में सुधार: अपने घर के ईशान कोण को हमेशा पवित्र रखें, रोज सुबह सूर्य देव को जल अर्पित करें और सात्विक जीवनशैली अपनाएं।
-
-निष्कर्ष (Conclusion):
-ज्योतिष कोई भाग्य का अंतिम फैसला नहीं है, बल्कि यह भविष्य की संभावनाओं का एक नक्शा है। यदि हम सही समय पर उचित वैदिक उपाय और कर्म सुधार करें, तो बड़े से बड़ा संकट भी टल सकता है। नियमित साधना और विश्वास से जीवन में सुख-शांति और ऐश्वर्य की प्राप्ति होती है।
-""";
+  // 🌟 Supabase आधारित उपाय ब्लॉग रीडर मॉडल शीट
+  void _openSupabaseBlogReader(Map<String, dynamic> upay) {
+    var rawBenefits = upay['key_benefits'];
+    List<String> parsedBenefits = [];
+    if (rawBenefits is List) {
+      parsedBenefits = rawBenefits.map((e) => e.toString()).toList();
+    }
 
     showModalBottomSheet(
       context: context,
@@ -526,7 +519,7 @@ ${blog.titleHi}
       backgroundColor: Colors.transparent,
       builder: (context) {
         return Container(
-          height: MediaQuery.of(context).size.height * 0.88,
+          height: MediaQuery.of(context).size.height * 0.90,
           decoration: const BoxDecoration(
             color: kCardColor,
             borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
@@ -543,7 +536,7 @@ ${blog.titleHi}
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                       decoration: BoxDecoration(color: const Color(0xFFFFF0E6), borderRadius: BorderRadius.circular(8)),
                       child: Text(
-                        _isEnglish ? blog.category : blog.categoryHi,
+                        upay['category'] ?? 'वैदिक उपाय',
                         style: const TextStyle(color: kPrimaryBhagwa, fontSize: 11, fontWeight: FontWeight.bold),
                       ),
                     ),
@@ -564,12 +557,12 @@ ${blog.titleHi}
                       ClipRRect(
                         borderRadius: BorderRadius.circular(16),
                         child: Image.network(
-                          blog.imageUrl,
-                          height: 200,
+                          upay['banner_image'] ?? 'https://images.unsplash.com/photo-1544717305-2782549b5136?w=600',
+                          height: 190,
                           width: double.infinity,
                           fit: BoxFit.cover,
                           errorBuilder: (context, error, stackTrace) => Container(
-                            height: 200,
+                            height: 190,
                             color: const Color(0xFFFFF0E6),
                             child: const Icon(Icons.menu_book_rounded, color: kPrimaryBhagwa, size: 50),
                           ),
@@ -577,49 +570,66 @@ ${blog.titleHi}
                       ),
                       const SizedBox(height: 16),
                       Text(
-                        _isEnglish ? blog.title : blog.titleHi,
+                        upay['title'] ?? '',
                         style: const TextStyle(color: kTextColor, fontSize: 18, fontWeight: FontWeight.bold, height: 1.3),
                       ),
                       const SizedBox(height: 6),
                       Text(
-                        "पढ़ने का समय: ${blog.readTime} • अपडेटेड: 2026",
+                        "पढ़ने का समय: ${upay['read_time'] ?? '3 मिनट'} • अपडेटेड: 2026",
                         style: const TextStyle(color: kSubTextColor, fontSize: 11),
                       ),
+                      
+                      if (upay['siddh_mantra'] != null && upay['siddh_mantra'].toString().trim().isNotEmpty) ...[
+                        const SizedBox(height: 14),
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFFF3E0),
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: const Color(0xFFFFCC80), width: 1.2),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.flare_rounded, color: kPrimaryBhagwa, size: 20),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text("सिद्ध महामंत्र:", style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: kSubTextColor)),
+                                    Text(upay['siddh_mantra'], style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: kTextColor)),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+
+                      if (parsedBenefits.isNotEmpty) ...[
+                        const SizedBox(height: 16),
+                        const Text("इस उपाय से क्या लाभ होंगे?", style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold, color: kTextColor)),
+                        const SizedBox(height: 6),
+                        ...parsedBenefits.map((b) => Padding(
+                          padding: const EdgeInsets.only(bottom: 6),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Icon(Icons.check_circle_rounded, color: Colors.green, size: 16),
+                              const SizedBox(width: 8),
+                              Expanded(child: Text(b, style: const TextStyle(fontSize: 12, color: kTextColor))),
+                            ],
+                          ),
+                        )),
+                      ],
+
                       const Divider(height: 24),
+                      const Text("संपूर्ण विधि एवं शास्त्रीय नियम 📜", style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: kTextColor)),
+                      const SizedBox(height: 8),
                       Text(
-                        _isEnglish ? detailedContentEn : detailedContentHi,
+                        upay['blog_body'] ?? upay['short_description'] ?? '',
                         style: const TextStyle(color: kTextColor, fontSize: 13.5, height: 1.6),
-                      ),
-                      const SizedBox(height: 30),
-                      Container(
-                        padding: const EdgeInsets.all(14),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFFFF7F0),
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: const Color(0xFFFFCC80)),
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            const Text("क्या यह लेख आपके लिए उपयोगी था?", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: kTextColor)),
-                            Row(
-                              children: [
-                                IconButton(
-                                  onPressed: () {
-                                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("समीक्षा के लिए धन्यवाद! 🙏")));
-                                  },
-                                  icon: const Icon(Icons.thumb_up_alt_rounded, color: kPrimaryBhagwa, size: 20),
-                                ),
-                                IconButton(
-                                  onPressed: () {
-                                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("लेख लिंक शेयर किया गया!")));
-                                  },
-                                  icon: const Icon(Icons.share_rounded, color: kPrimaryBhagwa, size: 20),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
                       ),
                     ],
                   ),
@@ -632,7 +642,18 @@ ${blog.titleHi}
     );
   }
 
-  void _submitFeedback() {
+  // 🌟 स्क्रीनशॉट पिकर और Supabase में फीडबैक सबमिट करने का सुरक्षित फंक्शन
+  Future<void> _pickFeedbackImage() async {
+    final ImagePicker picker = ImagePicker();
+    final XFile? image = await picker.pickImage(source: ImageSource.gallery);
+    if (image != null && mounted) {
+      setState(() {
+        _selectedFeedbackImage = image;
+      });
+    }
+  }
+
+  Future<void> _submitFeedbackToSupabase() async {
     final text = _feedbackController.text.trim();
     if (text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -640,30 +661,79 @@ ${blog.titleHi}
       );
       return;
     }
-    _feedbackController.clear();
-    FocusScope.of(context).unfocus();
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.check_circle_rounded, color: Colors.green, size: 50),
-            const SizedBox(height: 10),
-            const Text("संदेश प्रेषित हुआ! 🙏", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: kTextColor)),
-            const SizedBox(height: 6),
-            const Text("आपका संदेश सीधे ओनर ऑफिस प्रबंधन टीम को प्राप्त हो गया है। हम शीघ्र ही इस पर कार्रवाई करेंगे।", textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: kSubTextColor)),
-            const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: () => Navigator.pop(context),
-              style: ElevatedButton.styleFrom(backgroundColor: kPrimaryBhagwa, foregroundColor: Colors.white),
-              child: const Text("ठीक है"),
-            ),
-          ],
+
+    setState(() => _isSubmittingFeedback = true);
+
+    try {
+      final supabase = Supabase.instance.client;
+      final user = supabase.auth.currentUser;
+      String? screenshotUrl;
+
+      if (_selectedFeedbackImage != null) {
+        final String originalName = _selectedFeedbackImage!.name;
+        final List<String> nameParts = originalName.split('.');
+        final fileExt = nameParts.length > 1 ? nameParts.last : 'jpg';
+
+        final fileName = '${DateTime.now().millisecondsSinceEpoch}_${math.Random().toString().substring(2, 7)}.$fileExt';
+        final filePath = 'feedback_screenshots/$fileName';
+
+        if (kIsWeb) {
+          final bytes = await _selectedFeedbackImage!.readAsBytes();
+          await supabase.storage.from('feedback-bucket').uploadBinary(filePath, bytes);
+        } else {
+          final file = File(_selectedFeedbackImage!.path);
+          await supabase.storage.from('feedback-bucket').upload(filePath, file);
+        }
+
+        final publicUrlData = supabase.storage.from('feedback-bucket').getPublicUrl(filePath);
+        screenshotUrl = publicUrlData;
+      }
+
+      await supabase.from('user_feedbacks').insert({
+        'user_id': user?.id,
+        'user_name': _displayName,
+        'category': _selectedFeedbackType,
+        'message': text,
+        'screenshot_url': screenshotUrl,
+        'created_at': DateTime.now().toIso8601String(),
+      });
+
+      if (!mounted) return;
+      setState(() {
+        _isSubmittingFeedback = false;
+        _selectedFeedbackImage = null;
+        _feedbackController.clear();
+      });
+
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.check_circle_rounded, color: Colors.green, size: 50),
+              const SizedBox(height: 10),
+              const Text("संदेश प्रेषित हुआ! 🙏", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: kTextColor)),
+              const SizedBox(height: 6),
+              const Text("आपका संदेश स्क्रीनशॉट के साथ प्रबंधन टीम को प्राप्त हो गया है।", textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: kSubTextColor)),
+              const SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context),
+                style: ElevatedButton.styleFrom(backgroundColor: kPrimaryBhagwa, foregroundColor: Colors.white),
+                child: const Text("ठीक है"),
+              ),
+            ],
+          ),
         ),
-      ),
-    );
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isSubmittingFeedback = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("त्रुटि: $e"), backgroundColor: Colors.red),
+      );
+    }
   }
 
   void _openPanditBookingModal(PanditBookingItem pandit) {
@@ -1027,109 +1097,7 @@ ${blog.titleHi}
                                 ),
                               ],
                             ),
-
-                            const SizedBox(height: 10),
-
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: TextField(
-                                    controller: landmarkController,
-                                    style: const TextStyle(fontSize: 12, color: kTextColor),
-                                    decoration: InputDecoration(
-                                      labelText: "लैंडमार्क (Landmark)",
-                                      labelStyle: const TextStyle(fontSize: 11, color: kSubTextColor),
-                                      filled: true,
-                                      fillColor: const Color(0xFFFFFDF9),
-                                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFFFE0B2))),
-                                      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFFFE0B2))),
-                                      contentPadding: const EdgeInsets.all(10),
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: TextField(
-                                    controller: pincodeController,
-                                    keyboardType: TextInputType.number,
-                                    style: const TextStyle(fontSize: 12, color: kTextColor),
-                                    decoration: InputDecoration(
-                                      labelText: "पिन कोड (Pin Code)",
-                                      labelStyle: const TextStyle(fontSize: 11, color: kSubTextColor),
-                                      filled: true,
-                                      fillColor: const Color(0xFFFFFDF9),
-                                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFFFE0B2))),
-                                      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFFFE0B2))),
-                                      contentPadding: const EdgeInsets.all(10),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
                           ],
-                        ),
-                      ),
-                    ),
-
-                    const SizedBox(height: 12),
-
-                    SizedBox(
-                      width: double.infinity,
-                      height: 54,
-                      child: ElevatedButton.icon(
-                        onPressed: isAlreadyBooked
-                            ? () {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(content: Text("इस तारीख पर पंडित जी व्यस्त हैं, कृपया दूसरी तारीख चुनें!"), backgroundColor: Colors.red),
-                                );
-                              }
-                            : () async {
-                                final fullAddress = "${houseController.text}, ${streetController.text}, Landmark: ${landmarkController.text}, ${cityController.text} - ${pincodeController.text}";
-                                final yajmanFinalName = nameController.text.trim().isEmpty ? _displayName : nameController.text.trim();
-                                final phoneFinal = phoneController.text.trim().isEmpty ? "9876543210" : phoneController.text.trim();
-                                final dateFormatted = "${selectedDate.day}/${selectedDate.month}/${selectedDate.year}";
-
-                                try {
-                                  final user = Supabase.instance.client.auth.currentUser;
-                                  if (user != null) {
-                                    await Supabase.instance.client.from('pandit_bookings').insert({
-                                      'user_id': user.id,
-                                      'pandit_name': pandit.name,
-                                      'karmkand': selectedKarmkand,
-                                      'package_title': activePkg["title"],
-                                      'pandits_count': activePkg["pandits"],
-                                      'dakshina': activePkg["dakshina"],
-                                      'booking_date': dateFormatted,
-                                      'address': houseController.text.trim().isEmpty ? "जयपुर, राजस्थान" : fullAddress,
-                                      'yajman_name': yajmanFinalName,
-                                      'phone': phoneFinal,
-                                      'status': 'InProcess',
-                                    });
-                                  }
-                                } catch (_) {}
-
-                                Navigator.pop(modalContext);
-                                _showPanditSuccessDialog(
-                                  panditName: pandit.name,
-                                  karmkand: selectedKarmkand,
-                                  dakshina: activePkg["dakshina"],
-                                  packageTitle: activePkg["title"],
-                                  panditsCount: activePkg["pandits"],
-                                  dateStr: dateFormatted,
-                                  address: houseController.text.trim().isEmpty ? "जयपुर, राजस्थान" : fullAddress,
-                                  yajman: yajmanFinalName,
-                                );
-                              },
-                        icon: Icon(isAlreadyBooked ? Icons.block_rounded : Icons.local_fire_department_rounded, size: 24, color: Colors.white),
-                        label: Text(
-                          isAlreadyBooked ? "इस तारीख पर बुक नहीं हो सकते" : "पंडित जी बुक करें (${activePkg["dakshina"]}) 🚩",
-                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.white, letterSpacing: 0.5),
-                        ),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: isAlreadyBooked ? Colors.grey : kPrimaryBhagwa,
-                          elevation: 6,
-                          shadowColor: Colors.orange.withAlpha(180),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                         ),
                       ),
                     ),
@@ -1187,7 +1155,6 @@ ${blog.titleHi}
                 style: const TextStyle(fontSize: 11, color: kSubTextColor, height: 1.3),
               ),
               const SizedBox(height: 12),
-
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(12),
@@ -1218,7 +1185,6 @@ ${blog.titleHi}
                   ],
                 ),
               ),
-
               const SizedBox(height: 14),
               SizedBox(
                 width: double.infinity,
@@ -1467,6 +1433,12 @@ ${blog.titleHi}
           ],
         ),
         actions: [
+          // 🔔 गोल्डन नोटिफिकेशन बेल आइकॉन
+          IconButton(
+            icon: const Icon(Icons.notifications_rounded, color: Color(0xFFFFD700), size: 26),
+            onPressed: () => _showNotificationsDialog(context),
+            tooltip: 'नोटिफिकेशन्स',
+          ),
           InkWell(
             onTap: () {
               setState(() {
@@ -1475,8 +1447,8 @@ ${blog.titleHi}
             },
             borderRadius: BorderRadius.circular(20),
             child: Container(
-              margin: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
-              padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+              margin: const EdgeInsets.symmetric(vertical: 10, horizontal: 2),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               decoration: BoxDecoration(
                 color: const Color(0xFFFFF0E6),
                 borderRadius: BorderRadius.circular(20),
@@ -1484,8 +1456,8 @@ ${blog.titleHi}
               ),
               child: Row(
                 children: [
-                  const Icon(Icons.translate_rounded, color: kPrimaryBhagwa, size: 15),
-                  const SizedBox(width: 4),
+                  const Icon(Icons.translate_rounded, color: kPrimaryBhagwa, size: 14),
+                  const SizedBox(width: 3),
                   Text(
                     _isEnglish ? "ENG" : "हिन्दी",
                     style: const TextStyle(
@@ -1502,8 +1474,8 @@ ${blog.titleHi}
             onTap: _openWalletScreen,
             borderRadius: BorderRadius.circular(20),
             child: Container(
-              margin: const EdgeInsets.only(top: 10, bottom: 10, right: 12, left: 4),
-              padding: const EdgeInsets.symmetric(horizontal: 9),
+              margin: const EdgeInsets.only(top: 10, bottom: 10, right: 12, left: 2),
+              padding: const EdgeInsets.symmetric(horizontal: 8),
               decoration: BoxDecoration(
                 color: const Color(0xFFFFF0E6),
                 borderRadius: BorderRadius.circular(20),
@@ -1577,7 +1549,6 @@ ${blog.titleHi}
         children: [
           _HomeBannerSlider(
             fallbackBanners: bannerList,
-            // 🚀 यहाँ एडमिन पैनल के एक्शन और टारगेट ID को हैंडल किया जा रहा है
             onBannerTapWithRedirect: (actionType, targetId) {
               if (actionType == 'pooja') {
                 _openPujaBookingScreen();
@@ -1931,98 +1902,12 @@ ${blog.titleHi}
 
           const SizedBox(height: 20),
 
-          // ASTROLOGY BLOGS & REMEDIES
-          const Text("ज्योतिष ज्ञान एवं उपाय 📚", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: kTextColor)),
-          const SizedBox(height: 10),
-
-          SizedBox(
-            height: 195,
-            child: ListView.builder(
-              scrollDirection: Axis.horizontal,
-              physics: const ClampingScrollPhysics(),
-              itemCount: _blogsList.length,
-              itemBuilder: (context, index) {
-                final blog = _blogsList[index];
-                return Container(
-                  width: 230,
-                  margin: const EdgeInsets.only(right: 12),
-                  decoration: BoxDecoration(
-                    color: kCardColor,
-                    borderRadius: BorderRadius.circular(18),
-                    border: Border.all(color: Colors.orange.shade100),
-                    boxShadow: kCardShadow,
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Stack(
-                        children: [
-                          ClipRRect(
-                            borderRadius: const BorderRadius.vertical(top: Radius.circular(18)),
-                            child: Image.network(
-                              blog.imageUrl,
-                              height: 100,
-                              width: double.infinity,
-                              fit: BoxFit.cover,
-                              errorBuilder: (context, error, stackTrace) => Container(
-                                height: 100,
-                                color: const Color(0xFFFFF0E6),
-                                child: const Icon(Icons.menu_book_rounded, color: kPrimaryBhagwa),
-                              ),
-                            ),
-                          ),
-                          Positioned(
-                            top: 8,
-                            left: 8,
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                              decoration: BoxDecoration(
-                                color: Colors.black.withAlpha(180),
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              child: Text(
-                                _isEnglish ? blog.category : blog.categoryHi,
-                                style: const TextStyle(color: kGoldAccent, fontSize: 9, fontWeight: FontWeight.bold),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.all(10),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              _isEnglish ? blog.title : blog.titleHi,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(color: kTextColor, fontSize: 11, fontWeight: FontWeight.bold, height: 1.25),
-                            ),
-                            const SizedBox(height: 6),
-                            InkWell(
-                              onTap: () => _openBlogReader(blog),
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: const [
-                                  Text("पूरा पढ़ें", style: TextStyle(color: kPrimaryBhagwa, fontSize: 11, fontWeight: FontWeight.bold)),
-                                  Icon(Icons.arrow_forward_rounded, size: 13, color: kPrimaryBhagwa),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                );
-              },
-            ),
-          ),
+          // 🌟 ज्योतिष ज्ञान एवं उपाय - Supabase लाइव डेटा आधारित ऑटो-स्लाइडर
+          const _JyotishGyanSlideshowWidget(),
 
           const SizedBox(height: 22),
 
-          // 3. PROFESSIONAL MANAGEMENT FEEDBACK BOX
+          // 3. PROFESSIONAL MANAGEMENT FEEDBACK BOX (स्क्रीनशॉट अपलोड के साथ)
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
@@ -2046,18 +1931,17 @@ ${blog.titleHi}
                       child: const Icon(Icons.support_agent_rounded, color: Colors.white, size: 20),
                     ),
                     const SizedBox(width: 10),
-                    Column(
+                    const Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
-                      children: const [
+                      children: [
                         Text("प्रबंधन एवं ओनर ऑफिस सहायता", style: TextStyle(color: kTextColor, fontSize: 14, fontWeight: FontWeight.bold)),
-                        Text("सीधे मैनेजमेंट तक अपनी बात पहुँचाएँ", style: TextStyle(color: kSubTextColor, fontSize: 10.5)),
+                        Text("शिकायत या स्क्रीनशॉट सीधे मैनेजमेंट तक पहुँचाएँ", style: TextStyle(color: kSubTextColor, fontSize: 10.5)),
                       ],
                     ),
                   ],
                 ),
                 const SizedBox(height: 12),
 
-                // Category Dropdown
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12),
                   decoration: BoxDecoration(
@@ -2087,13 +1971,12 @@ ${blog.titleHi}
 
                 const SizedBox(height: 10),
 
-                // Text Field
                 TextField(
                   controller: _feedbackController,
                   maxLines: 3,
                   style: const TextStyle(fontSize: 12, color: kTextColor),
                   decoration: InputDecoration(
-                    hintText: "यहाँ अपना सुझाव, शिकायत या विचार विस्तार से लिखें...",
+                    hintText: "यहाँ अपना सुझाव, शिकायत या समस्या विस्तार से लिखें...",
                     hintStyle: const TextStyle(fontSize: 11, color: Colors.grey),
                     filled: true,
                     fillColor: Colors.white,
@@ -2103,16 +1986,43 @@ ${blog.titleHi}
                   ),
                 ),
 
+                const SizedBox(height: 10),
+
+                Row(
+                  children: [
+                    OutlinedButton.icon(
+                      onPressed: _pickFeedbackImage,
+                      icon: const Icon(Icons.image_rounded, size: 16, color: kPrimaryBhagwa),
+                      label: Text(_selectedFeedbackImage == null ? "स्क्रीनशॉट जोड़ें" : "बदला गया ✅", style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: kPrimaryBhagwa)),
+                      style: OutlinedButton.styleFrom(
+                        side: const BorderSide(color: Color(0xFFFFCC80)),
+                        backgroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                    ),
+                    if (_selectedFeedbackImage != null) ...[
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          _selectedFeedbackImage!.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 10.5, color: Colors.green, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+
                 const SizedBox(height: 12),
 
-                // Submit Button
                 SizedBox(
                   width: double.infinity,
                   height: 46,
                   child: ElevatedButton.icon(
-                    onPressed: _submitFeedback,
+                    onPressed: _isSubmittingFeedback ? null : _submitFeedbackToSupabase,
                     icon: const Icon(Icons.send_rounded, size: 16, color: Colors.white),
-                    label: const Text("ओनर ऑफिस को सुरक्षित भेजें 🏛️", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.white)),
+                    label: Text(_isSubmittingFeedback ? "भेजा जा रहा है..." : "ओनर ऑफिस को सुरक्षित भेजें 🏛️", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.white)),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: kPrimaryBhagwa,
                       elevation: 3,
@@ -2144,62 +2054,18 @@ ${blog.titleHi}
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          GestureDetector(
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => PanditDetailScreen(
-                    name: pandit.name,
-                    imageUrl: pandit.imageUrl,
-                    tradition: pandit.tradition,
-                    experience: pandit.exp,
-                    city: pandit.city,
-                    dakshina: pandit.dakshina,
-                    rating: pandit.rating,
-                    completedPujas: "1,250+",
-                    followers: "14.2k",
-                  ),
-                ),
-              );
-            },
-            child: CircleAvatar(
-              radius: 30,
-              backgroundImage: NetworkImage(pandit.imageUrl),
-              backgroundColor: const Color(0xFFFFF0E6),
-            ),
-          ),
+          CircleAvatar(radius: 30, backgroundImage: NetworkImage(pandit.imageUrl), backgroundColor: const Color(0xFFFFF0E6)),
           const SizedBox(width: 12),
           Expanded(
-            child: GestureDetector(
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => PanditDetailScreen(
-                      name: pandit.name,
-                      imageUrl: pandit.imageUrl,
-                      tradition: pandit.tradition,
-                      experience: pandit.exp,
-                      city: pandit.city,
-                      dakshina: pandit.dakshina,
-                      rating: pandit.rating,
-                      completedPujas: "1,250+",
-                      followers: "14.2k",
-                    ),
-                  ),
-                );
-              },
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(pandit.name, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: kTextColor)),
-                  const SizedBox(height: 2),
-                  Text(pandit.tradition, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, color: kPrimaryBhagwa, fontWeight: FontWeight.w600)),
-                  const SizedBox(height: 2),
-                  Text("अनुभव: ${pandit.exp} • दक्षिणा: ${pandit.dakshina}", style: const TextStyle(fontSize: 10.5, color: kSubTextColor)),
-                ],
-              ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(pandit.name, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: kTextColor)),
+                const SizedBox(height: 2),
+                Text(pandit.tradition, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, color: kPrimaryBhagwa, fontWeight: FontWeight.w600)),
+                const SizedBox(height: 2),
+                Text("अनुभव: ${pandit.exp} • दक्षिणा: ${pandit.dakshina}", style: const TextStyle(fontSize: 10.5, color: kSubTextColor)),
+              ],
             ),
           ),
           const SizedBox(width: 8),
@@ -2215,10 +2081,7 @@ ${blog.titleHi}
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                 padding: const EdgeInsets.symmetric(horizontal: 18),
               ),
-              child: const Text(
-                "बुक करें 🪔",
-                style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, letterSpacing: 0.5),
-              ),
+              child: const Text("बुक करें 🪔", style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
             ),
           ),
         ],
@@ -2237,6 +2100,241 @@ ${blog.titleHi}
           Text(title, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: kTextColor)),
         ],
       ),
+    );
+  }
+}
+
+// 🌟 Supabase लाइव 'vedic_upays' डेटा आधारित ऑटो-स्लाइडर विजेट (होम स्क्रीन के लिए)
+class _JyotishGyanSlideshowWidget extends StatefulWidget {
+  const _JyotishGyanSlideshowWidget();
+
+  @override
+  State<_JyotishGyanSlideshowWidget> createState() => _JyotishGyanSlideshowWidgetState();
+}
+
+class _JyotishGyanSlideshowWidgetState extends State<_JyotishGyanSlideshowWidget> {
+  final PageController _pageController = PageController(viewportFraction: 0.88);
+  int _currentPage = 0;
+  Timer? _slideshowTimer;
+
+  List<dynamic> _slideshowUpays = [];
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchUpaysForSlideshow();
+  }
+
+  Future<void> _fetchUpaysForSlideshow() async {
+    try {
+      final supabase = Supabase.instance.client;
+      final response = await supabase
+          .from('vedic_upays')
+          .select()
+          .order('created_at', ascending: false)
+          .limit(5);
+
+      if (!mounted) return;
+
+      if (response != null && response.isNotEmpty) {
+        setState(() {
+          _slideshowUpays = response;
+          _isLoading = false;
+        });
+        _startAutoSlide();
+      } else {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      debugPrint("Error fetching slideshow upays: $e");
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
+  void _startAutoSlide() {
+    _slideshowTimer = Timer.periodic(const Duration(seconds: 3), (timer) {
+      if (_slideshowUpays.isNotEmpty && mounted && _pageController.hasClients) {
+        if (_currentPage < _slideshowUpays.length - 1) {
+          _currentPage++;
+        } else {
+          _currentPage = 0;
+        }
+        _pageController.animateToPage(
+          _currentPage,
+          duration: const Duration(milliseconds: 500),
+          curve: Curves.easeInOut,
+        );
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _slideshowTimer?.cancel();
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isLoading) {
+      return const SizedBox(
+        height: 160,
+        child: Center(child: CircularProgressIndicator(color: Color(0xFFFF6F00))),
+      );
+    }
+
+    if (_slideshowUpays.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: const [
+              Text(
+                "ज्योतिष ज्ञान एवं उपाय 🪔",
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF2E1500)),
+              ),
+              Text(
+                "सभी देखें",
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFFFF6F00)),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 10),
+
+        SizedBox(
+          height: 185,
+          child: PageView.builder(
+            controller: _pageController,
+            itemCount: _slideshowUpays.length,
+            onPageChanged: (index) {
+              setState(() {
+                _currentPage = index;
+              });
+            },
+            itemBuilder: (context, index) {
+              final upay = _slideshowUpays[index];
+              return GestureDetector(
+                onTap: () {
+                  final parentState = context.findAncestorStateOfType<_HomeScreenState>();
+                  if (parentState != null) {
+                    parentState._openSupabaseBlogReader(upay);
+                  }
+                },
+                child: Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 6),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(color: Colors.orange.shade100),
+                    boxShadow: const [
+                      BoxShadow(color: Color(0x0A000000), blurRadius: 4, offset: Offset(0, 2)),
+                    ],
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(18),
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        Image.network(
+                          upay['banner_image'] ?? 'https://images.unsplash.com/photo-1544717305-2782549b5136?w=600',
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) => Container(color: const Color(0xFFFFF0E6)),
+                        ),
+                        Container(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: [Colors.black.withAlpha(40), Colors.black.withAlpha(210)],
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                            ),
+                          ),
+                        ),
+                        Positioned(
+                          top: 10,
+                          left: 10,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFF6F00),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              upay['category'] ?? 'ज्योतिष ज्ञान',
+                              style: const TextStyle(color: Colors.white, fontSize: 9.5, fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                        ),
+                        Positioned(
+                          bottom: 12,
+                          left: 12,
+                          right: 12,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                upay['title'] ?? '',
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 13.5,
+                                  fontWeight: FontWeight.bold,
+                                  height: 1.2,
+                                ),
+                              ),
+                              const SizedBox(height: 3),
+                              Text(
+                                upay['short_description'] ?? '',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: Color(0xFFFFD54F),
+                                  fontSize: 10.5,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+
+        const SizedBox(height: 8),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: List.generate(_slideshowUpays.length, (index) {
+            return Container(
+              width: _currentPage == index ? 16 : 6,
+              height: 6,
+              margin: const EdgeInsets.symmetric(horizontal: 2),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(3),
+                color: _currentPage == index ? const Color(0xFFFF6F00) : Colors.orange.shade200,
+              ),
+            );
+          }),
+        ),
+      ],
     );
   }
 }
@@ -2261,57 +2359,7 @@ class _ShubhMuhuratTickerBannerState extends State<_ShubhMuhuratTickerBanner> {
       "title": "आज का अभिजित मुहूर्त",
       "text": "आज का अभिजित मुहूर्त: दोपहर 11:45 से 12:35 तक (शुभ कार्य हेतु श्रेष्ठ)",
       "time": "दोपहर 11:45 से 12:35 तक",
-      "desc": "अभिजित मुहूर्त दिन का सबसे शक्तिशाली और सर्वकार्य सिद्धिदायक मुहूर्त माना जाता है। इस समय में किया गया कोई भी नया कार्य निर्विघ्न रूप से सफल होता है।",
-      "views_count": 0,
-      "likes_count": 106,
-    },
-    {
-      "id": "fallback_2",
-      "icon": Icons.warning_amber_rounded,
-      "title": "आज का राहुकाल",
-      "text": "आज का राहुकाल: दोपहर 01:30 से 03:00 तक (इस दौरान नया कार्य न करें)",
-      "time": "दोपहर 01:30 से 03:00 तक",
-      "desc": "राहुकाल के समय किसी भी नए कार्य, यात्रा या वित्तीय लेन-देन से बचना चाहिए। इस दौरान केवल नियमित पूजा व ध्यान करना उचित है।",
-      "views_count": 0,
-      "likes_count": 106,
-    },
-    {
-      "id": "fallback_3",
-      "icon": Icons.wb_sunny_rounded,
-      "title": "आज का ब्रह्म मुहूर्त",
-      "text": "आज का ब्रह्म मुहूर्त: सुबह 04:20 से 05:10 तक (ध्यान व साधना हेतु उत्तम)",
-      "time": "सुबह 04:20 से 05:10 तक",
-      "desc": "ब्रह्म मुहूर्त में ईश्वरीय ऊर्जा का प्रवाह चरम पर होता है। इस समय उठकर योग, ध्यान और मंत्र जप करने से आत्मबल एवं एकाग्रता में वृद्धि होती है।",
-      "views_count": 0,
-      "likes_count": 106,
-    },
-    {
-      "id": "fallback_4",
-      "icon": Icons.favorite_rounded,
-      "title": "आज का गोचर",
-      "text": "आज का गोचर: चंद्रमा तुला राशि में विराजमान, मानसिक शांति मिलेगी",
-      "time": "पूरे दिन प्रभावी",
-      "desc": "चंद्रमा का शुभ गोचर आपके मन और विचारों में सौम्यता व संतुलन लाएगा। कला, रचनात्मक कार्यों और पारिवारिक रिश्तों के लिए यह समय अत्यंत अनुकूल है।",
-      "views_count": 0,
-      "likes_count": 106,
-    },
-    {
-      "id": "fallback_5",
-      "icon": Icons.flare_rounded,
-      "title": "आज का अमृत काल",
-      "text": "आज का अमृत काल: शाम 05:15 से 06:45 तक (व्यापारिक सौदों के लिए शुभ)",
-      "time": "शाम 05:15 से 06:45 तक",
-      "desc": "अमृत काल का समय किसी भी शुभ कार्य, नए व्यापार की शुरुआत, खरीदारी या महत्वपूर्ण अनुबंध/डील साइन करने के लिए अत्यंत फलदायी और मंगलकारी माना जाता है।",
-      "views_count": 0,
-      "likes_count": 106,
-    },
-    {
-      "id": "fallback_6",
-      "icon": Icons.local_fire_department_rounded,
-      "title": "दैनिक उपाय",
-      "text": "दैनिक उपाय: आज सुबह स्नान के बाद सूर्य देव को जल व लाल फूल अर्पित करें",
-      "time": "प्रातः काल",
-      "desc": "सूर्य देव को तांबे के लोटे से अर्घ्य देने और गायत्री मंत्र का 11 बार जाप करने से मान-सम्मान, यश और स्वास्थ्य में अद्भुत लाभ होता है।",
+      "desc": "अभिजित मुहूर्त दिन का सबसे शक्तिशाली और सर्वकार्य सिद्धिदायक मुहूर्त माना जाता है।",
       "views_count": 0,
       "likes_count": 106,
     },
@@ -2321,13 +2369,13 @@ class _ShubhMuhuratTickerBannerState extends State<_ShubhMuhuratTickerBanner> {
   void initState() {
     super.initState();
     _tickerController = PageController();
-    _fetchLiveMiddleBanners();
+    _fetchLiveTickerBanners();
   }
 
-  Future<void> _fetchLiveMiddleBanners() async {
+  Future<void> _fetchLiveTickerBanners() async {
     try {
       final response = await Supabase.instance.client
-          .from('middle_banners')
+          .from('ticker_banners')
           .select()
           .eq('is_active', true)
           .order('created_at', ascending: false);
@@ -2338,12 +2386,12 @@ class _ShubhMuhuratTickerBannerState extends State<_ShubhMuhuratTickerBanner> {
             return {
               "id": item["id"],
               "icon": Icons.flare_rounded,
-              "title": item["title"] ?? "विशेष सूचना",
-              "text": item["title"] ?? "",
-              "time": "विशेष वैदिक मुहूर्त / सूचना",
-              "desc": item["popup_content"] ?? item["title"] ?? "",
-              "views_count": item["views_count"] ?? 0,
-              "likes_count": item["likes_count"] ?? 106,
+              "title": item["title"] ?? "विशेष अपडेट",
+              "text": "${item["tag"] ?? '✨'} ${item["title"] ?? ''}",
+              "time": "विशेष अपडेट / सूचना",
+              "desc": item["description"] ?? "",
+              "btn_text": item["button_text"] ?? "संकल्प करें",
+              "likes_count": item["likes_count"] ?? 107,
             };
           }));
         });
@@ -2364,183 +2412,6 @@ class _ShubhMuhuratTickerBannerState extends State<_ShubhMuhuratTickerBanner> {
     });
   }
 
-  void _showMuhuratDetailDialog(BuildContext context, Map<String, dynamic> item) async {
-    final String? bannerId = item["id"]?.toString();
-    int currentViews = (item["views_count"] ?? 0) as int;
-    int currentLikes = (item["likes_count"] ?? 106) as int;
-    bool isLiked = false;
-
-    if (bannerId != null && !bannerId.startsWith('fallback_')) {
-      try {
-        await Supabase.instance.client
-            .from('middle_banners')
-            .update({'views_count': currentViews + 1})
-            .eq('id', bannerId);
-        item["views_count"] = currentViews + 1;
-      } catch (_) {}
-    }
-
-    if (!context.mounted) return;
-
-    showDialog(
-      context: context,
-      builder: (BuildContext dialogContext) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            return Dialog(
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(20),
-              ),
-              backgroundColor: Colors.white,
-              child: Padding(
-                padding: const EdgeInsets.all(18.0),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Expanded(
-                          child: Row(
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.all(6),
-                                decoration: const BoxDecoration(
-                                  color: Color(0xFFFFF0E6),
-                                  shape: BoxShape.circle,
-                                ),
-                                child: Icon(item["icon"] ?? Icons.flare_rounded, color: kPrimaryBhagwa, size: 22),
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  item["title"] ?? "विशेष विवरण",
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                    color: kTextColor,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.close_rounded, size: 20, color: kTextColor),
-                          onPressed: () => Navigator.pop(dialogContext),
-                        ),
-                      ],
-                    ),
-                    const Divider(height: 16),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFFFF7F0),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.orange.shade200),
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.access_time_filled_rounded, size: 14, color: kPrimaryBhagwa),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: Text(
-                              "समय / काल: ${item["time"] ?? 'पूरे दिन प्रभावी'}",
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                                color: kPrimaryBhagwa,
-                                fontSize: 12,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      item["desc"] ?? "",
-                      style: const TextStyle(
-                        fontSize: 13,
-                        color: kTextColor,
-                        height: 1.5,
-                      ),
-                    ),
-                    const SizedBox(height: 18),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        InkWell(
-                          onTap: () async {
-                            setDialogState(() {
-                              isLiked = !isLiked;
-                              currentLikes += isLiked ? 1 : -1;
-                            });
-
-                            if (bannerId != null && !bannerId.startsWith('fallback_')) {
-                              try {
-                                await Supabase.instance.client
-                                    .from('middle_banners')
-                                    .update({'likes_count': currentLikes})
-                                    .eq('id', bannerId);
-                                item["likes_count"] = currentLikes;
-                              } catch (_) {}
-                            }
-                          },
-                          borderRadius: BorderRadius.circular(10),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                            decoration: BoxDecoration(
-                              color: isLiked ? Colors.red.shade50 : Colors.grey.shade100,
-                              borderRadius: BorderRadius.circular(10),
-                              border: Border.all(
-                                color: isLiked ? Colors.red.shade200 : Colors.grey.shade300,
-                              ),
-                            ),
-                            child: Row(
-                              children: [
-                                Icon(
-                                  isLiked ? Icons.favorite_rounded : Icons.favorite_border_rounded,
-                                  color: isLiked ? Colors.red : Colors.grey.shade600,
-                                  size: 18,
-                                ),
-                                const SizedBox(width: 6),
-                                Text(
-                                  "$currentLikes",
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.bold,
-                                    color: isLiked ? Colors.red : Colors.grey.shade700,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                        ElevatedButton(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: kPrimaryBhagwa,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                            elevation: 2,
-                          ),
-                          onPressed: () => Navigator.pop(dialogContext),
-                          child: const Text("समझ गया", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
-                        ),
-                      ],
-                    )
-                  ],
-                ),
-              ),
-            );
-          },
-        );
-      },
-    );
-  }
-
   @override
   void dispose() {
     _tickerTimer?.cancel();
@@ -2553,51 +2424,48 @@ class _ShubhMuhuratTickerBannerState extends State<_ShubhMuhuratTickerBanner> {
     final activeList = _liveTickerList.isNotEmpty ? _liveTickerList : _fallbackMuhuratList;
     final currentItem = activeList[_tickerIndex % activeList.length];
 
-    return GestureDetector(
-      onTap: () => _showMuhuratDetailDialog(context, currentItem),
-      child: Container(
-        height: 50,
-        padding: const EdgeInsets.symmetric(horizontal: 14),
-        decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            colors: [Color(0xFFFFF3E0), Color(0xFFFFE0B2)],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: Colors.orange.shade300, width: 1.2),
-          boxShadow: const [BoxShadow(color: Color(0x0A000000), blurRadius: 4, offset: Offset(0, 2))],
+    return Container(
+      height: 50,
+      padding: const EdgeInsets.symmetric(horizontal: 14),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFFFFF3E0), Color(0xFFFFE0B2)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
         ),
-        child: Row(
-          children: [
-            Icon(currentItem["icon"] ?? Icons.flare_rounded, color: const Color(0xFFE65100), size: 22),
-            const SizedBox(width: 10),
-            Expanded(
-              child: PageView.builder(
-                controller: _tickerController,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: activeList.length,
-                itemBuilder: (context, index) {
-                  final item = activeList[index];
-                  return Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      item["text"] ?? "",
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Color(0xFF2E1500),
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                      ),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.orange.shade300, width: 1.2),
+        boxShadow: const [BoxShadow(color: Color(0x0A000000), blurRadius: 4, offset: Offset(0, 2))],
+      ),
+      child: Row(
+        children: [
+          Icon(currentItem["icon"] ?? Icons.flare_rounded, color: const Color(0xFFE65100), size: 22),
+          const SizedBox(width: 10),
+          Expanded(
+            child: PageView.builder(
+              controller: _tickerController,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: activeList.length,
+              itemBuilder: (context, index) {
+                final item = activeList[index];
+                return Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    item["text"] ?? "",
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Color(0xFF2E1500),
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
                     ),
-                  );
-                },
-              ),
+                  ),
+                );
+              },
             ),
-            const Icon(Icons.arrow_forward_ios_rounded, size: 12, color: Color(0xFF795548)),
-          ],
-        ),
+          ),
+          const Icon(Icons.arrow_forward_ios_rounded, size: 12, color: Color(0xFF795548)),
+        ],
       ),
     );
   }
@@ -2619,7 +2487,7 @@ class _HomeBannerSlider extends StatefulWidget {
 class _HomeBannerSliderState extends State<_HomeBannerSlider> {
   late PageController _controller;
   Timer? _timer;
-  Timer? _syncTimer; // 🌟 नया टाइमर: डेटाबेस से लाइव सिंक करने के लिए
+  Timer? _syncTimer;
   int _currentIndex = 0;
   List<Map<String, dynamic>> _dbBanners = [];
 
@@ -2629,7 +2497,6 @@ class _HomeBannerSliderState extends State<_HomeBannerSlider> {
     _controller = PageController(initialPage: 0);
     _fetchBannersOnce();
 
-    // 🌟 हर 3 सेकंड में एडमिन पैनल से नया डेटा अपने आप ऐप में आएगा!
     _syncTimer = Timer.periodic(const Duration(seconds: 3), (timer) {
       _fetchBannersOnce();
     });
@@ -2650,15 +2517,23 @@ class _HomeBannerSliderState extends State<_HomeBannerSlider> {
   Future<void> _fetchBannersOnce() async {
     final supabase = Supabase.instance.client;
     try {
+      final nowIso = DateTime.now().toIso8601String();
+
       final response = await supabase
           .from('banners')
           .select()
           .eq('is_active', true)
+          .or('start_at.is.null,start_at.lte.$nowIso')
+          .or('expires_at.is.null,expires_at.gte.$nowIso')
           .order('created_at', ascending: false);
 
       if (response.isNotEmpty && mounted) {
         setState(() {
           _dbBanners = List<Map<String, dynamic>>.from(response);
+        });
+      } else if (mounted) {
+        setState(() {
+          _dbBanners = [];
         });
       }
     } catch (_) {}
@@ -2679,7 +2554,7 @@ class _HomeBannerSliderState extends State<_HomeBannerSlider> {
   @override
   void dispose() {
     _timer?.cancel();
-    _syncTimer?.cancel(); // 🌟 टाइमर बंद करें
+    _syncTimer?.cancel();
     _controller.dispose();
     super.dispose();
   }
@@ -2715,13 +2590,10 @@ class _HomeBannerSliderState extends State<_HomeBannerSlider> {
           if (_dbBanners.isNotEmpty) {
             final item = _dbBanners[index];
             imageUrl = item['image_url']?.toString() ?? '';
-            
-            // 🌟 बिल्कुल सटीक प्रोफाइल इमेज फेच लॉजिक ताकि फोटो मिस न हो
             profileImageUrl = item['profile_image_url']?.toString() ?? '';
             if (profileImageUrl.trim().isEmpty || profileImageUrl == 'null') {
               profileImageUrl = imageUrl;
             }
-            
             title = item['title']?.toString() ?? '';
             subtitle = item['subtitle']?.toString() ?? '';
             badge = item['badge']?.toString() ?? 'DIVINE GUIDANCE 🚩';
@@ -2779,11 +2651,19 @@ class _HomeBannerSliderState extends State<_HomeBannerSlider> {
                     : Container(
                         padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
                         decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            colors: [gradStart, gradEnd],
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                          ),
+                          image: imageUrl.isNotEmpty
+                              ? DecorationImage(
+                                  image: NetworkImage(imageUrl),
+                                  fit: BoxFit.cover,
+                                )
+                              : null,
+                          gradient: imageUrl.isEmpty
+                              ? LinearGradient(
+                                  colors: [gradStart, gradEnd],
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                )
+                              : null,
                         ),
                         child: Row(
                           children: [
@@ -2797,7 +2677,7 @@ class _HomeBannerSliderState extends State<_HomeBannerSlider> {
                                     Container(
                                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                                       decoration: BoxDecoration(
-                                        color: Colors.black26,
+                                        color: Colors.black45,
                                         borderRadius: BorderRadius.circular(8),
                                       ),
                                       child: Text(
@@ -2812,7 +2692,12 @@ class _HomeBannerSliderState extends State<_HomeBannerSlider> {
                                         title,
                                         maxLines: 1,
                                         overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.bold,
+                                          shadows: [Shadow(color: Colors.black54, blurRadius: 4, offset: Offset(0, 1))],
+                                        ),
                                       ),
                                       if (subtitle.isNotEmpty) ...[
                                         const SizedBox(height: 2),
@@ -2820,7 +2705,12 @@ class _HomeBannerSliderState extends State<_HomeBannerSlider> {
                                           subtitle,
                                           maxLines: 2,
                                           overflow: TextOverflow.ellipsis,
-                                          style: const TextStyle(color: Colors.white70, fontSize: 10, height: 1.2),
+                                          style: const TextStyle(
+                                            color: Colors.white70,
+                                            fontSize: 10,
+                                            height: 1.2,
+                                            shadows: [Shadow(color: Colors.black54, blurRadius: 3, offset: Offset(0, 1))],
+                                          ),
                                         ),
                                       ],
                                     ],
@@ -2855,7 +2745,7 @@ class _HomeBannerSliderState extends State<_HomeBannerSlider> {
                                         border: Border.all(color: kGoldAccent.withAlpha(200), width: 2),
                                         boxShadow: const [
                                           BoxShadow(
-                                            color: Colors.black26,
+                                            color: Colors.black45,
                                             blurRadius: 8,
                                             offset: Offset(0, 3),
                                           ),
