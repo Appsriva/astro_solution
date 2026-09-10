@@ -396,17 +396,16 @@ class _HomeScreenState extends State<HomeScreen> {
     Navigator.push(context, MaterialPageRoute(builder: (context) => const ConsultationHistoryScreen()));
   }
 
-  // 🔔 100% सुरक्षित और फिक्स किया गया नोटिफिकेशन डायलॉग फंक्शन
+  // 🔔 100% सुरक्षित और फिक्स किया गया नोटिफिकेशन डायलॉग फंक्शन (id के आधार पर सही सॉर्टिंग)
   void _showNotificationsDialog(BuildContext context) async {
     final supabase = Supabase.instance.client;
     List<Map<String, dynamic>> notifications = [];
     
     try {
       final response = await supabase
-          .from('notifications_log')
-          .select()
-          .order('created_at', ascending: false)
-          .limit(20);
+          .from('notification_logs')
+          .select('*')
+          .order('id', ascending: false);
 
       if (response is List) {
         notifications = List<Map<String, dynamic>>.from(response);
@@ -450,11 +449,11 @@ class _HomeScreenState extends State<HomeScreen> {
                         child: ListTile(
                           leading: const Icon(Icons.notifications_rounded, color: kPrimaryBhagwa),
                           title: Text(
-                            item['title'] ?? 'विशेष सूचना',
+                            item['title']?.toString() ?? 'विशेष सूचना',
                             style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: kTextColor),
                           ),
                           subtitle: Text(
-                            item['message'] ?? '',
+                            item['message']?.toString() ?? '',
                             style: const TextStyle(fontSize: 11, color: kSubTextColor),
                           ),
                         ),
@@ -2137,7 +2136,7 @@ class _JyotishGyanSlideshowWidgetState extends State<_JyotishGyanSlideshowWidget
 
       if (!mounted) return;
 
-      if (response != null && response.isNotEmpty) {
+      if (response.isNotEmpty) {
         setState(() {
           _slideshowUpays = response;
           _isLoading = false;

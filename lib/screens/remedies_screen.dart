@@ -164,7 +164,7 @@ class _RemediesScreenState extends State<RemediesScreen> {
 
       if (!mounted) return;
 
-      if (response != null && response.isNotEmpty) {
+      if (response.isNotEmpty) {
         final List<RemedyItem> loaded = response.map((item) => RemedyItem.fromSupabase(item)).toList();
         setState(() {
           _supabaseRemedies = loaded;

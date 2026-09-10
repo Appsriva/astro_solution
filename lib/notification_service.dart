@@ -24,8 +24,15 @@ class NotificationService {
         debugPrint('User declined or has not accepted permission');
       }
 
-      // 2. FCM टोकन जनरेट करना (सही तरीका सिर्फ getToken() है)
-      String? token = await _firebaseMessaging.getToken();
+      // 2. FCM टोकन जनरेट करना (वेब के लिए vapidKey और मोबाइल के लिए नॉर्मल getToken)
+      String? token;
+      if (kIsWeb) {
+        token = await _firebaseMessaging.getToken(
+          vapidKey: "YOUR_WEB_VAPID_KEY_HERE_IF_REQUIRED",
+        );
+      } else {
+        token = await _firebaseMessaging.getToken();
+      }
 
       debugPrint("FCM Registration Token: $token");
 
@@ -42,7 +49,10 @@ class NotificationService {
       FirebaseMessaging.onMessage.listen((RemoteMessage message) {
         debugPrint('Got a message whilst in the foreground!');
         if (message.notification != null) {
-          debugPrint('Message also contained a notification: ${message.notification?.title}');
+          debugPrint('Message Title: ${message.notification?.title}');
+          debugPrint('Message Body: ${message.notification?.body}');
+          
+          // यहाँ चाहें तो आप लोकल नोटिफिकेशन शो करने का या स्टेट रिफ्रेश करने का लॉजिक जोड़ सकते हैं
         }
       });
 
@@ -54,8 +64,13 @@ class NotificationService {
   Future<void> _saveTokenToSupabase(String token) async {
     try {
       final supabase = Supabase.instance.client;
+      final currentUser = supabase.auth.currentUser;
+
+      // device_tokens टेबल में टोकन सेव या अपडेट करना
       await supabase.from('device_tokens').upsert({
         'fcm_token': token,
+        'user_id': currentUser?.id,
+        'role': 'user',
         'app_type': 'user_app',
         'updated_at': DateTime.now().toIso8601String(),
       }, onConflict: 'fcm_token');
